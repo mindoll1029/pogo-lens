@@ -1,13 +1,13 @@
 import {readFile,writeFile} from 'node:fs/promises';
 const read=p=>readFile(new URL(p,import.meta.url),'utf8');
 const strip=s=>s.replace(/^import .*?;\r?\n/gm,'').replace(/export (function|const|let)/g,'$1');
-const [html,cssSource,app,vision,view,engine,ratings,worker,data,observation]=await Promise.all(['dist/index.html','dist/style.css','dist/app.js','dist/vision.js','dist/result-view.js','dist/engine.js','dist/ratings.js','dist/worker.js','dist/data.json','dist/observation.js'].map(read));
+const [html,cssSource,app,vision,view,engine,ratings,worker,data,observation,growth]=await Promise.all(['dist/index.html','dist/style.css','dist/app.js','dist/vision.js','dist/result-view.js','dist/engine.js','dist/ratings.js','dist/worker.js','dist/data.json','dist/observation.js','dist/growth.js'].map(read));
 const css=cssSource.replace('@import url("./tokens.css");',await read('dist/tokens.css')).replace('@import url("./base.css");',await read('dist/base.css'));
 const workerCode=[engine,ratings,observation,worker].map(strip).join('\n');
 const dbStart=app.indexOf("const db=await fetch('data.json')"),dbEnd=app.indexOf('\n',dbStart);
 if(dbStart<0||dbEnd<0)throw Error('Data import anchor missing');
 let main=app.slice(0,dbStart)+'const db='+data+';'+app.slice(dbEnd);
 main=strip(main).replace("new Worker('worker.js',{type:'module'})",`new Worker(URL.createObjectURL(new Blob([${JSON.stringify(workerCode)}],{type:'text/javascript'})))`);
-const script=`const {detect,signature,distance}=(()=>{${strip(vision)};return {detect,signature,distance}})();\nconst {renderResults,candidateKey}=(()=>{${strip(view)};return {renderResults,candidateKey}})();\nconst {legalMoves,trainerCap,inferLevel,recognizeCP,digitTemplates}=(()=>{${strip(engine)}\n${strip(observation)};return {legalMoves,trainerCap,inferLevel,recognizeCP,digitTemplates}})();\n${main}`;
+const script=`const {detect,signature,distance}=(()=>{${strip(vision)};return {detect,signature,distance}})();\nconst {renderResults,candidateKey}=(()=>{${strip(view)};return {renderResults,candidateKey}})();\nconst {legalMoves,trainerCap,inferLevel,recognizeCP,digitTemplates,applyGrowth,resetGrowth,evolutionTargets}=(()=>{${strip(engine)}\n${strip(observation)}\n${strip(growth)};return {legalMoves,trainerCap,inferLevel,recognizeCP,digitTemplates,applyGrowth,resetGrowth,evolutionTargets}})();\n${main}`;
 const output=html.replace('<link rel="stylesheet" href="style.css">',`<style>${css}</style>`).replace('<script type="module" src="app.js"></script>',`<script type="module">${script.replaceAll('</script','<\\/script')}</script>`);
 await writeFile(new URL('../go-lens-offline.html',import.meta.url),output);console.log('Created go-lens-offline.html');
