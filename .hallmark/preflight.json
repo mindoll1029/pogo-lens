@@ -1,0 +1,21 @@
+{
+  "scanned": "2026-11-08",
+  "findings": {
+    "framework": "Static HTML / ES modules, package.json:1",
+    "fonts": "Korean system sans stack, dist/style.css:2 (before)",
+    "palette": "Existing green role token retained; Squeeze green surfaces and peach controls",
+    "wiring": "dist/app.js and worker.js; full read/edit/save/cancel flow"
+  },
+  "preserve": [
+    "all existing uncommitted changes, explicitly authorized by user",
+    "all IDs, fields, links and handlers",
+    "green brand anchor",
+    "existing explanations and legal copy"
+  ],
+  "introduce": [
+    "Squeeze playful app surfaces",
+    "larger Korean labels and numeric hierarchy",
+    "tokens.css and base.css"
+  ],
+  "dirtyTreeOverride": "User explicitly requested existing changes be preserved"
+}

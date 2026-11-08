@@ -1,0 +1,36 @@
+[
+ {
+  "mode": "redesign",
+  "depth": "full",
+  "scope": "app",
+  "shape": "app screen",
+  "theme": "squeeze",
+  "axes": "mid/geometric-sans/warm",
+  "hero": "none (app)",
+  "nav": "kept compact top bar",
+  "footer": "legal colophon",
+  "imagery": "user appraisal screenshots",
+  "photos": [],
+  "entry": "recording import",
+  "fingerprint": "green-korean-appraisal-collection",
+  "sections": [
+   "recording import",
+   "collection",
+   "usage disclosure",
+   "analysis dialog"
+  ],
+  "signature": "appraisal screenshot collection",
+  "waived": [
+   "28b: video supplied by user only"
+  ],
+  "prompt": "Personal Korean Pokemon GO appraisal tool, cheerful Pokedex feel, preserve all existing functionality",
+  "verification": {
+   "staticFloor": 0,
+   "staticReflex": 0,
+   "waived": 1,
+   "automatedRender": "unavailable: Edge detached / headless shell launch blocked",
+   "manualCapture": "harness screenshot reviewed"
+  },
+  "date": "2026-11-08"
+ }
+]
