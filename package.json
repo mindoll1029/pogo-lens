@@ -1,0 +1,1 @@
+{"name":"go-lens-personal","private":true,"type":"module","scripts":{"start":"node server.mjs","test":"node --test tests/*.test.mjs","update-data":"node update-data.mjs"}}

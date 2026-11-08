@@ -1,0 +1,2 @@
+import {league,raid,stats} from './engine.js';
+self.onmessage=({data:{id,db,p,iv,max,level,shadow,fast,charged,target}})=>{try{postMessage({id,result:{iv:iv.reduce((a,b)=>a+b,0)/45*100,leagues:p.mega?[]:[1500,2500,Infinity].map(cap=>league(db,p,iv,cap,max)),current:level?stats(db,p,iv,level):null,raid:level&&fast&&charged?raid(db,p,iv,level,shadow,fast,charged,target):null}})}catch(e){postMessage({id,error:e.message})}};
