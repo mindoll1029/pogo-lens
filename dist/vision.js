@@ -4,7 +4,7 @@ function appraisalTracks({width:w,height:h,data}) {
  const rows=[];
  const rgb=(x,y)=>4*(y*w+x);
  for(let y=Math.floor(h*.43);y<Math.floor(h*.94);y+=2) {
-  let start=-1,last=-1,colored=0;
+  let start=-1,last=-1,lastFill=-1,colored=0;
   for(let x=Math.floor(w*.04);x<Math.floor(w*.89);x++) {
    const i=rgb(x,y),r=data[i],g=data[i+1],b=data[i+2];
    const fill=ink(r,g,b);
@@ -13,14 +13,16 @@ function appraisalTracks({width:w,height:h,data}) {
     if(start<0)start=x;
     last=x;
     colored+=Number(fill);
+    if(fill)lastFill=x;
    }
    if(start<0||x-last<=Math.max(2,w*.008))continue;
    const length=last-start+1;
    if(length>=w*.18&&length<=w*.66&&start<w*.52) {
     const center=Math.round((start+last)/2),up=rgb(center,y-Math.ceil(h*.012)),down=rgb(center,y+Math.ceil(h*.012));
-    if(data[up]>=235||data[down]>=235)rows.push({y,start,end:last,colored});
+    if(data[up]>=235||data[down]>=235)rows.push({y,start,end:last,lastFill,colored});
    }
    start=-1;
+   lastFill=-1;
    colored=0;
   }
  }
@@ -38,7 +40,8 @@ function appraisalTracks({width:w,height:h,data}) {
    if(gap<h*.018||gap>h*.09)continue;
    const c=aligned.find(t=>Math.abs(t.y-b.y-gap)<h*.006);
    if(!c||a.colored+b.colored+c.colored<w*.02)continue;
-   const iv=[a,b,c].map(t=>Math.min(15,Math.round(15*t.colored/(t.end-t.start+1))));
+   // Divider lines are inside the fill, so use its endpoint instead of counting colored pixels.
+   const iv=[a,b,c].map(t=>Math.max(0,Math.round(15*(t.lastFill-t.start+1)/(t.end-t.start+1))));
    return {candidate:true,iv,confidence:'조사 막대 자동 판독',tracks:true};
   }
  }
@@ -52,3 +55,12 @@ export function detect(image,calibration){const {width:w,height:h,data:d}=image;
 }
 export function signature(image){const {width:w,height:h,data}=image;const a=[];for(let y=1;y<17;y++)for(let x=1;x<10;x++){const i=(Math.floor(h*y/18)*w+Math.floor(w*x/11))*4;a.push(Math.round((data[i]+data[i+1]+data[i+2])/48))}return a;}
 export function distance(a,b){return a.reduce((n,x,i)=>n+Math.abs(x-b[i]),0)/a.length;}
+
+export function fullBarCorrection(iv,matches){
+ const candidates=[iv];
+ iv.forEach((value,i)=>{
+  if(value===14)candidates.push(...candidates.map(row=>row.map((v,j)=>i===j?15:v)));
+ });
+ const fitting=candidates.slice(1).filter(matches);
+ return fitting.length===1?fitting[0]:null;
+}

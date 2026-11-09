@@ -1,12 +1,20 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import {detect} from '../dist/vision.js';
-import {readObservation} from '../dist/frame-ocr.js';
+import {detect,fullBarCorrection} from '../dist/vision.js';
+import {readObservation,cpFromOverview} from '../dist/frame-ocr.js';
 import {inferLevel} from '../dist/observation.js';
 
 const db=JSON.parse(fs.readFileSync(new URL('../dist/data.json',import.meta.url)));
 const azumarill=db.pokemon.find(p=>p.id==='azumarill');
+test('Stored Banette appraisal can recover CP and uniquely correct full bars',()=>{
+ const cp=cpFromOverview('719\ncr1998\n다크펫\n132/132HP');
+ assert.equal(cp,1998);
+ const p=db.pokemon.find(p=>p.id==='banette');
+ const fit=iv=>inferLevel(db,p,iv,40,{cp,hp:132}).level;
+ assert.deepEqual(fullBarCorrection([7,14,14],fit),[7,15,15]);
+ assert.equal(fullBarCorrection([7,14,14],()=>true),null);
+});
 
 test('CP comes from the number in its crop even when the prefix was misread',()=>{
  const iv=[0,15,15];
@@ -39,7 +47,8 @@ test('An empty attack track does not block automatic IV and level recovery',()=>
  for(const [i,iv] of [0,15,15].entries()){
   for(let y=690+i*66;y<703+i*66;y++){
    for(let x=65;x<307;x++){
-    const rgb=x-65<242*iv/15?[238,155,75]:[210,210,210];
+    const divider=[144,145,146,147,225,226,227,228].includes(x);
+    const rgb=divider?[255,255,255]:x-65<242*iv/15?[238,155,75]:[210,210,210];
     data.set(rgb,(y*width+x)*4);
    }
   }

@@ -34,6 +34,10 @@ export function readCPDigits(text) {
  return values.size===1?[...values][0]:null;
 }
 
+export function cpFromOverview(text) {
+ return readCPDigits(text.normalize('NFKC').split(/\r?\n/).filter(line=>/^\s*c[pr]\s*[:.]?\s*\d/i.test(line)).join('\n'));
+}
+
 export function formAppearance(canvas,species) {
  const sample=document.createElement('canvas');
  sample.width=sample.height=16;
@@ -107,6 +111,8 @@ export async function recognizeFrame(canvas,db,iv,trainer,known={}) {
  if(!known.cp){
   cpText=await read(crop(overview,.26,.025,.51,.12,2));
   if(!readCPDigits(cpText))cpText=await read(crop(overview,.25,.025,.52,.26,1.6));
+  const fromOverview=cpFromOverview(text);
+  if(fromOverview)cpText=String(fromOverview);
  }
  return readObservation(db,text,iv,trainer,{...known,cpText,appearance});
 }
