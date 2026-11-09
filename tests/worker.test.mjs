@@ -1,6 +1,13 @@
 import test from 'node:test';import assert from 'node:assert/strict';import fs from 'node:fs';
 const db=JSON.parse(fs.readFileSync(new URL('../dist/data.json',import.meta.url)));globalThis.self=globalThis;let response;globalThis.postMessage=r=>response=r;await import('../dist/worker.js');
 const get=id=>db.pokemon.find(p=>p.id===id);
+test('Subsequent calculations reuse the worker database',()=>{
+ self.onmessage({data:{id:10,db,mode:'preview',p:get('azumarill'),iv:[0,15,15],observed:{cp:1400}}});
+ assert.ok(!response.error,response.error);
+ const first=response.result;
+ self.onmessage({data:{id:11,mode:'preview',p:get('azumarill'),iv:[0,15,15],observed:{cp:1400}}});
+ assert.deepEqual(response.result,first);
+});
 test('Worker derives current level entirely from screenshot CP and trainer input',()=>{self.onmessage({data:{id:1,db,p:get('azumarill'),iv:[0,15,15],trainer:40,observed:{cp:1400},fast:'BUBBLE',charged:'ICE_BEAM'}});assert.ok(!response.error,response.error);assert.equal(response.result.inference.level,40);assert.ok(response.result.raid.current.dps>0);assert.equal(response.result.current.cp,1400)});
 test('Worker rejects illegal cross-species and cross-status moves',()=>{self.onmessage({data:{id:2,db,p:get('magikarp'),iv:[15,15,15],trainer:40,fast:'SPLASH',charged:'BLAST_BURN'}});assert.match(response.error,/보유할 수 없는/);self.onmessage({data:{id:3,db,p:get('charizard'),iv:[15,15,15],trainer:40,charged:'RETURN'}});assert.match(response.error,/보유할 수 없는/)});
 test('Worker preserves unknown level and keeps raid skill rating separate',()=>{self.onmessage({data:{id:4,db,p:get('charizard'),iv:[15,15,15],trainer:40,fast:'FIRE_SPIN',charged:'BLAST_BURN'}});assert.ok(!response.error,response.error);assert.equal(response.result.inference.status,'missing');assert.equal(response.result.current,null);assert.equal(response.result.raid.current,null);assert.ok(response.result.raid.chosen);});
