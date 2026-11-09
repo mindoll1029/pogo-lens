@@ -1,6 +1,6 @@
 import {detect,signature,distance} from './vision.js';
 import {applyGrowth,resetGrowth,evolutionTargets} from './growth.js';
-import {recognizeFrame} from './frame-ocr.js';
+import {recognizeFrame,formAppearance} from './frame-ocr.js';
 import {renderResults,candidateKey,leagueBadge} from './result-view.js';
 import {legalMoves,trainerCap,inferLevel,recognizeCP,digitTemplates} from './observation.js';
 const $=s=>document.querySelector(s), el=(tag,cls,text)=>{const n=document.createElement(tag);if(cls)n.className=cls;if(text!==undefined)n.textContent=text;return n};
@@ -36,12 +36,13 @@ function render(){
  $('#cards').replaceChildren(...cards.slice().reverse().map(renderCard));
  syncCollection();
 }
-function renderCard(c){const b=el('button','card');b.type='button';const img=el('img','card-shot');img.loading='lazy';img.decoding='async';img.src=c.image;img.alt=c.demo?'예제 조사 화면':`조사 화면 ${c.time?.toFixed(1)||0}초`;b.append(img);const body=el('div','cardbody');body.append(el('h3',null,db.pokemon.find(p=>p.id===c.species)?.name||'포켓몬 미확인'));const line=el('div','ivline');
+function renderCard(c){const b=el('button','card');b.type='button';const img=el('img','card-shot');img.loading='lazy';img.decoding='async';img.src=c.image;img.alt=c.demo?'예제 조사 화면':`조사 화면 ${c.time?.toFixed(1)||0}초`;b.append(img);const body=el('div','cardbody');body.append(el('h3',null,db.pokemon.find(p=>p.id===c.species)?.name||(c.recognizedName?c.recognizedName+' · 폼 확인 필요':'포켓몬 미확인')));const line=el('div','ivline');
  if(c.iv?.every(Number.isInteger)){
   const percent=c.iv.reduce((sum,value)=>sum+value,0)/45*100;
   line.append(el('strong',null,c.iv.join(' / ')),el('small',null,percent.toFixed(1)+'% IV'));
  }else line.append(el('strong',null,'IV 확인 필요'));
  body.append(line);
+ if(c.observed?.cp)body.append(el('p','card-level','CP '+c.observed.cp));
  const trainer=Number($('#trainer').value)||c.trainer,pokemon=db.pokemon.find(p=>p.id===c.species);
  if(pokemon&&c.iv&&Number.isInteger(trainer)&&trainer>=1&&trainer<=80){
   const estimate=inferLevel(db,pokemon,c.iv,trainer,c.observed,{purified:c.purified});
@@ -63,7 +64,7 @@ async function open(c){if(saving)return;editing=false;editRevision++;draftPvpUse
  setInlineStatus('#scan-status','');
  setInlineStatus('#move-status',pokemon?'':'포켓몬을 먼저 확인해 주세요.');
  $('#source-panel').open=!matchMedia('(max-width: 760px)').matches;
- $('#pokemon-name').textContent=pokemon?.name||'포켓몬 미확인';
+ $('#pokemon-name').textContent=pokemon?.name||(c.recognizedName?c.recognizedName+' · 폼 확인 필요':'포켓몬 미확인');
  const willAnalyze=c.confirmed&&validTrainer();
  resultStatus(willAnalyze?'분석 결과를 불러오는 중입니다…':!c.confirmed?'수정하기에서 포켓몬과 IV를 확인한 뒤 저장하면 리그 결과를 볼 수 있습니다.':'설정에서 트레이너 레벨을 저장해 주세요.');
  if(!detail.open)detail.showModal();
@@ -94,7 +95,7 @@ $('#search').oninput=e=>speciesOptions(e.target.value,$('#species').value);$('#s
 $('#calibrate').onclick=()=>{cpPoints=null;calpoints=[];$('#calhelp').textContent='1/5 / 첫 막대의 왼쪽 시작점을 클릭하세요 (빈 부분 포함 전체 길이 기준).';draw()};
 $('#shot').onclick=e=>{if(!editing||!calpoints)return;const cv=$('#shot'),r=cv.getBoundingClientRect(),scale=Math.min(r.width/cv.width,r.height/cv.height),dw=cv.width*scale,dh=cv.height*scale,x=(e.clientX-r.left-(r.width-dw)/2)/dw,y=(e.clientY-r.top-(r.height-dh)/2)/dh;if(x<0||x>1||y<0||y>1)return;calpoints.push([x,y]);draw();const prompts=['','첫 막대의 오른쪽 끝을 클릭하세요 (15 IV 길이).','공격 막대 중앙을 클릭하세요.','방어 막대 중앙을 클릭하세요.','HP 막대 중앙을 클릭하세요.'];if(calpoints.length<5){$('#calhelp').textContent=`${calpoints.length+1}/5 / ${prompts[calpoints.length]}`;return}const [a,b,c,d,h]=calpoints;if(b[0]-a[0]<.1||!(c[1]<d[1]&&d[1]<h[1])){$('#calhelp').textContent='좌표 순서가 올바르지 않습니다. 보정을 다시 시작하세요.';calpoints=null;return}cal={x0:a[0],x1:b[0],ys:[c[1],d[1],h[1]]};calpoints=null;draw();const result=detect(cv.getContext('2d').getImageData(0,0,cv.width,cv.height),cal);['atk','def','hp'].forEach((k,i)=>$('#'+k).value=result.iv[i]);syncIV();$('#iv-confirm').checked=false;updateEstimate();$('#calhelp').textContent='좌표 보정 완료. 판독한 IV를 확인하고 저장하세요. 같은 화면 배치에서만 유효합니다.'};
 function metric(title,value,sub,right){const n=el('div','metric'),a=el('div');a.append(el('small',null,title),el('strong',null,value),el('small',null,sub));n.append(a);if(right){const b=el('div','right');b.append(el('strong',null,right[0]),el('small',null,right[1]));n.append(b)}return n}
-async function analyze(persist=true){if(persist&&!editing)return;const revision=editRevision,c=selected;showError('');try{const p=db.pokemon.find(p=>p.id===$('#species').value);if(!p)throw Error('종과 폼을 선택하세요.');if(!$('#iv-confirm').checked)throw Error('조사 막대를 확인한 뒤 IV 확인에 체크하세요.');const iv=['atk','def','hp'].map(k=>Number($('#'+k).value)),trainer=Number($('#trainer').value),state=getState(),max=50,threshold=Number($('#threshold').value),cpFloor=Number($('#cpfloor').value)/100;if(!validTrainer()){if(persist)openSettings();return}legalMoves(db,p,state);if(!Number.isFinite(threshold)||threshold<0||threshold>100||cpFloor<0||cpFloor>1)throw Error('기준은 0–100%로 입력하세요.');const observed={cp:Number($('#observed-cp').value)||null,hp:Number($('#observed-hp').value)||null};if(c.observed?.calculatedLevel&&c.observed.cp===observed.cp&&c.observed.hp===observed.hp)observed.calculatedLevel=c.observed.calculatedLevel;if(observed.cp&&(!Number.isInteger(observed.cp)||observed.cp<10||observed.cp>20000)||observed.hp&&(!Number.isInteger(observed.hp)||observed.hp<10||observed.hp>2000))throw Error('CP·HP는 화면에 보이는 정수로 입력하세요.');const inference=inferLevel(db,p,iv,trainer,observed,state),level=inference.level,data={p,iv,trainer,observed,...state,max,threshold,cpFloor,fast:$('#fast').value,charged:$('#charged').value};if(persist){saving=true;applyEditMode()}$('#analyze').disabled=true;$('#analyze').textContent='레벨 / 진화 후보 / 기술 비교 중…';const r=await calculate(data);if(selected?.id!==c.id||revision!==editRevision)return;const updated={...c,pvpUse:draftPvpUse,species:p.id,iv,trainer,observed,...state,level:undefined,max:undefined,threshold,cpFloor,fast:data.fast,charged:data.charged,confirmed:true,preview:r.previews.map(x=>({name:x.name,cap:x.cap,state:x.state,percentile:x.percentile}))};if(persist){await save(updated);selected=updated;try{if(cal)localStorage.setItem('go-lens-cal',JSON.stringify(cal))}catch{}}resultStatus('');renderResults($('#results'),r,{...data,level,inference,db,card:updated,onFlag:value=>{if(editing)draftPvpUse=value},onTable:async candidate=>calculate({mode:'table',p:db.pokemon.find(x=>x.id===candidate.species),cap:candidate.cap,max:50})});if(persist){editing=false;editRevision++;$('#card-fields').open=false;$('#move-panel').open=false;$('#source-panel').open=!matchMedia('(max-width: 760px)').matches;$('#detail').scrollTop=0}applyEditMode();}catch(e){if(revision===editRevision){if(persist)showError(e.message);else resultStatus('분석 결과를 열 수 없습니다. 카드를 다시 열거나 정보를 확인해 주세요.')}}finally{saving=false;applyEditMode();$('#analyze').disabled=false;$('#analyze').textContent='수정 저장 / 분석하기'}}
+async function analyze(persist=true){if(persist&&!editing)return;const revision=editRevision,c=selected;showError('');try{const p=db.pokemon.find(p=>p.id===$('#species').value);if(!p)throw Error('종과 폼을 선택하세요.');if(!$('#iv-confirm').checked)throw Error('조사 막대를 확인한 뒤 IV 확인에 체크하세요.');const iv=['atk','def','hp'].map(k=>Number($('#'+k).value)),trainer=Number($('#trainer').value),state=getState(),max=50,threshold=Number($('#threshold').value),cpFloor=Number($('#cpfloor').value)/100;if(!validTrainer()){if(persist)openSettings();return}legalMoves(db,p,state);if(!Number.isFinite(threshold)||threshold<0||threshold>100||cpFloor<0||cpFloor>1)throw Error('기준은 0–100%로 입력하세요.');const observed={cp:Number($('#observed-cp').value)||null,hp:Number($('#observed-hp').value)||null};if(c.observed?.calculatedLevel&&c.observed.cp===observed.cp&&c.observed.hp===observed.hp)observed.calculatedLevel=c.observed.calculatedLevel;if(observed.cp&&(!Number.isInteger(observed.cp)||observed.cp<10||observed.cp>20000)||observed.hp&&(!Number.isInteger(observed.hp)||observed.hp<10||observed.hp>2000))throw Error('CP·HP는 화면에 보이는 정수로 입력하세요.');const inference=inferLevel(db,p,iv,trainer,observed,state),level=inference.level,data={p,iv,trainer,observed,...state,max,threshold,cpFloor,fast:$('#fast').value,charged:$('#charged').value};if(persist){saving=true;applyEditMode()}$('#analyze').disabled=true;$('#analyze').textContent='레벨 / 진화 후보 / 기술 비교 중…';const r=await calculate(data);if(selected?.id!==c.id||revision!==editRevision)return;const updated={...c,pvpUse:draftPvpUse,species:p.id,iv,trainer,observed,...state,level:undefined,max:undefined,threshold,cpFloor,fast:data.fast,charged:data.charged,confirmed:true,preview:r.previews.map(x=>({name:x.name,cap:x.cap,state:x.state,percentile:x.percentile}))};if(persist){if(imageObj&&!c.growthBase)updated.appearance=formAppearance($('#shot'),p.id);await save(updated);selected=updated;try{if(cal)localStorage.setItem('go-lens-cal',JSON.stringify(cal))}catch{}}resultStatus('');renderResults($('#results'),r,{...data,level,inference,db,card:updated,onFlag:value=>{if(editing)draftPvpUse=value},onTable:async candidate=>calculate({mode:'table',p:db.pokemon.find(x=>x.id===candidate.species),cap:candidate.cap,max:50})});if(persist){editing=false;editRevision++;$('#card-fields').open=false;$('#move-panel').open=false;$('#source-panel').open=!matchMedia('(max-width: 760px)').matches;$('#detail').scrollTop=0}applyEditMode();}catch(e){if(revision===editRevision){if(persist)showError(e.message);else resultStatus('분석 결과를 열 수 없습니다. 카드를 다시 열거나 정보를 확인해 주세요.')}}finally{saving=false;applyEditMode();$('#analyze').disabled=false;$('#analyze').textContent='수정 저장 / 분석하기'}}
 
 $('#analyze').onclick=()=>analyze();
 function download(data,name,type){const url=URL.createObjectURL(new Blob([data],{type})),a=el('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),5000)}
@@ -102,6 +103,7 @@ $('#download').onclick=()=>{const a=el('a');a.href=selected.image;a.download=`go
 $('#delete').onclick=async()=>{if(!editing)return;if(!selected||!confirm('이 카드와 스크린샷을 기기에서 삭제할까요?'))return;try{await transaction('readwrite',s=>s.delete(selected.id))}catch{}cards=cards.filter(c=>c.id!==selected.id);$('#detail').close();render()};
 $('#clear').onclick=async()=>{if(busy){status('분석을 중지한 뒤 삭제하세요.');return}if(!confirm('이 기기의 모든 분석 카드와 보정 좌표를 삭제할까요?'))return;try{await transaction('readwrite',s=>s.clear())}catch{}cards=[];cal=null;try{localStorage.removeItem('go-lens-cal')}catch{}render();status('기기에 저장된 카드와 보정 좌표를 삭제했습니다.')};
 const canvas=document.createElement('canvas');function frame(source){const w=source.videoWidth||source.naturalWidth,h=source.videoHeight||source.naturalHeight;if(!w||!h)throw Error('영상/이미지 프레임을 읽지 못했습니다.');canvas.width=Math.min(w,720);canvas.height=Math.round(h*canvas.width/w);const ctx=canvas.getContext('2d',{willReadFrequently:true});ctx.drawImage(source,0,0,canvas.width,canvas.height);return ctx.getImageData(0,0,canvas.width,canvas.height)}
+function appearanceReferences(){return cards.flatMap(card=>card.appearance?[card.appearance]:[])}
 async function addFrame(source,time=0,force=false){
  const pixels=frame(source),detected=detect(pixels,cal);
  if(!force&&!detected.candidate)return false;
@@ -113,7 +115,8 @@ async function addFrame(source,time=0,force=false){
  const card={id:crypto.randomUUID(),image,time,iv,confidence:detected.confidence||'조사 화면을 확인하세요.',sig,confirmed:false};
  if(detected.candidate||force){
   try{
-   const {pokemon,observed,verified}=await recognizeFrame(canvas,db,iv,trainer);
+   const {pokemon,name,observed,verified}=await recognizeFrame(canvas,db,iv,trainer,{references:appearanceReferences()});
+   if(name)card.recognizedName=name;
    card.observed=observed;
    if(pokemon)card.species=pokemon.id;
    if(pokemon&&iv&&verified&&detected.tracks){
@@ -189,30 +192,31 @@ $('#scan-card').onclick=async()=>{
  applyEditMode();
  setInlineStatus('#scan-status','스크린샷에서 이름과 CP를 읽는 중입니다…');
  try{
-  const {pokemon,observed}=await recognizeFrame($('#shot'),db,iv,trainer,{
-   species,cp:editing?null:knownCP,hp:knownHP,state:getState()
+  const {pokemon,name,observed}=await recognizeFrame($('#shot'),db,iv,trainer,{
+   species,cp:editing?null:knownCP,hp:knownHP,state:getState(),references:appearanceReferences()
   });
   if(revision!==editRevision)return;
-  const foundName=!species&&pokemon;
+  const foundName=!species&&name&&(pokemon||name!==c.recognizedName);
   const foundCP=observed.cp!==knownCP&&(!knownCP||editing&&pokemon&&iv&&validTrainer()&&inferLevel(db,pokemon,iv,trainer,observed,getState()).levels.length)&&observed.cp;
   if(!foundName&&!foundCP){
    setInlineStatus('#scan-status','새로 확인된 값이 없습니다. 수정하기에서 포켓몬 또는 CP를 직접 지정할 수 있습니다.');
    return;
   }
-  if(foundName){
+  if(foundName&&pokemon){
    options($('#species'),[[pokemon.id,pokemon.name]],null);
    moveOptions(pokemon);
   }
   if(foundCP)$('#observed-cp').value=foundCP;
   updateEstimate();
+  if(foundName&&!pokemon)$('#pokemon-name').textContent=name+' · 폼 확인 필요';
   if(!editing){
-   const updated={...c,species:pokemon?.id||c.species,observed:{...c.observed,cp:observed.cp,hp:observed.hp}};
+   const updated={...c,recognizedName:name||c.recognizedName,species:pokemon?.id||c.species,observed:{...c.observed,cp:observed.cp,hp:observed.hp}};
    await save(updated);
    if(revision!==editRevision)return;
    selected=updated;
    if(updated.confirmed&&validTrainer())await analyze(false);
   }
-  if(revision===editRevision)setInlineStatus('#scan-status',[foundName&&pokemon.name,foundCP&&'CP '+foundCP].filter(Boolean).join(' · ')+' 확인');
+  if(revision===editRevision)setInlineStatus('#scan-status',[foundName&&(pokemon?.name||name+' · 폼 확인 필요'),foundCP&&'CP '+foundCP].filter(Boolean).join(' · ')+' 확인');
  }catch{
   if(revision===editRevision)setInlineStatus('#scan-status','자동 판독을 완료하지 못했습니다. 다시 시도하거나 수정하기에서 직접 입력하세요.');
  }finally{
