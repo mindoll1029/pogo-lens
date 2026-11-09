@@ -159,6 +159,24 @@ summary { font-size: var(--text-sm); min-height: 44px; line-height: 1.6; }
 .metric small { display: block; font-size: var(--text-sm); color: var(--color-card-muted); }
 .metric strong { font-size: var(--text-xl); font-weight: 800; font-variant-numeric: tabular-nums; }
 .metric .right { text-align: right; }
+.tier-badge {
+  display: inline-grid;
+  place-items: center;
+  min-width: 2em;
+  padding: 0.12em 0.35em;
+  border-radius: 0.35rem;
+  background: var(--tier-surface, #e9e6e2);
+  color: var(--tier-ink, #403831);
+  font-weight: 800;
+  line-height: 1.4;
+}
+.tier-badge[data-tier="S"] { --tier-surface: #f9df9a; --tier-ink: #593700; }
+.tier-badge[data-tier="A"] { --tier-surface: #ccebd8; --tier-ink: #124a30; }
+.tier-badge[data-tier="B"] { --tier-surface: #d3e7f7; --tier-ink: #153f65; }
+.tier-badge[data-tier="C"] { --tier-surface: #e8dcf5; --tier-ink: #4b2d68; }
+.tier-badge[data-tier="D"] { --tier-surface: #f8dec9; --tier-ink: #643117; }
+.tier-badge[data-tier="E"] { --tier-surface: #f7dbe2; --tier-ink: #69273b; }
+.tier-badge[data-tier="F"] { --tier-surface: #e6e4e2; --tier-ink: #433a35; }
 .tablewrap { max-width: 100%; overflow: auto; max-height: 440px; margin-block: var(--space-md); }
 table { width: 100%; border-collapse: collapse; font-size: var(--text-sm); white-space: nowrap; font-variant-numeric: tabular-nums; }
 th, td { padding: var(--space-sm); text-align: left; border-bottom: 1px solid var(--color-card-rule); }

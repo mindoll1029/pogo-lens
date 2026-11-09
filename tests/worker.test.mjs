@@ -1,6 +1,20 @@
 import test from 'node:test';import assert from 'node:assert/strict';import fs from 'node:fs';
 const db=JSON.parse(fs.readFileSync(new URL('../dist/data.json',import.meta.url)));globalThis.self=globalThis;let response;globalThis.postMessage=r=>response=r;await import('../dist/worker.js');
 const get=id=>db.pokemon.find(p=>p.id===id);
+test('Current CP excludes only leagues whose cap is exceeded',()=>{
+ const input={db,p:get('banette'),iv:[7,15,15],trainer:40};
+ self.onmessage({data:{...input,id:12,observed:{cp:1998,hp:132}}});
+ assert.ok(!response.error,response.error);
+ assert.equal(response.result.leagues[0],null);
+ assert.ok(response.result.leagues[1]);
+ assert.ok(response.result.leagues[2]);
+ assert.ok(response.result.previews.every(row=>row.cap>=1998));
+ self.onmessage({data:{...input,id:13,observed:{cp:2500}}});
+ assert.ok(response.result.leagues[1]);
+ self.onmessage({data:{...input,id:14,observed:{cp:2501}}});
+ assert.equal(response.result.leagues[1],null);
+ assert.ok(response.result.leagues[2]);
+});
 test('Subsequent calculations reuse the worker database',()=>{
  self.onmessage({data:{id:10,db,mode:'preview',p:get('azumarill'),iv:[0,15,15],observed:{cp:1400}}});
  assert.ok(!response.error,response.error);
