@@ -6,6 +6,18 @@ import {readObservation} from '../dist/frame-ocr.js';
 import {inferLevel} from '../dist/observation.js';
 
 const db=JSON.parse(fs.readFileSync(new URL('../dist/data.json',import.meta.url)));
+const azumarill=db.pokemon.find(p=>p.id==='azumarill');
+
+test('Targeted CP reading recovers a value missed or misread in the overview',()=>{
+ const iv=[0,15,15];
+ const corrected=readObservation(db,'Ｃ Ｐ １４９８\n마 릴 리',iv,40,{cpText:'1400'});
+ assert.equal(corrected.pokemon.id,azumarill.id);
+ assert.equal(corrected.observed.cp,1400);
+ assert.equal(corrected.verified,true);
+ const unknown=readObservation(db,'별명',iv,40,{cpText:'1400'});
+ assert.equal(unknown.observed.cp,null);
+ assert.equal(unknown.pokemon,null);
+});
 
 test('An empty attack track does not block automatic IV and level recovery',()=>{
  const width=540,height=1120,data=new Uint8ClampedArray(width*height*4).fill(255);

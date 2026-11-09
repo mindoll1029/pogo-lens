@@ -123,6 +123,8 @@ dialog::backdrop { background: var(--color-overlay); }
 .screen, .card-fields { margin-block: 0; }
 .screen > summary, .card-fields > summary { padding-block: 0.65rem; font-weight: 700; }
 .card-fields { border-bottom: 1px solid var(--color-card-rule); margin-bottom: var(--space-sm); }
+.card-fields[open] { padding-bottom: var(--space-sm); }
+#scan-card { color: var(--color-card-ink); border-color: var(--color-card-rule); }
 #detail.editing .card-fields > summary { display: none; }
 #detail:not(.editing) .editor:has(#results > *) .ivinputs { display: none; }
 #result-status { padding: var(--space-sm) 0; }

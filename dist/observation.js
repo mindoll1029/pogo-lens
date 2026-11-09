@@ -3,7 +3,14 @@ export function trainerCap(trainer){if(!Number.isInteger(trainer)||trainer<1||tr
 export function legalMoves(db,p,state={}){if(!p)return {fast:[],charged:[]};if(state.shadow&&state.purified)throw Error('그림자와 정화는 함께 선택할 수 없습니다.');if(state.shadow&&state.lucky)throw Error('그림자와 반짝반짝은 함께 선택할 수 없습니다.');if((state.shadow||state.purified)&&(!p.shadowAllowed||p.mega))throw Error('이 종·폼에는 현재 데이터상 그림자·정화 분류를 적용할 수 없습니다.');return {fast:p.fast.filter(k=>db.moves[k]?.energy>=0),charged:[...new Set([...p.charged.filter(k=>!['FRUSTRATION','RETURN'].includes(k)),...(state.shadow?['FRUSTRATION']:state.purified?['RETURN']:[])])].filter(k=>db.moves[k]?.energy<0)}}
 export function inferLevel(db,p,iv,trainer,observed,state={}){const cap=trainerCap(trainer),cp=Number(observed?.cp),hp=Number(observed?.hp);if(!Number.isInteger(cp)||cp<10||cp>20000)return {status:'missing',levels:[],level:null,cap,message:'CP를 확인하면 개체 레벨을 자동으로 추정합니다.'};const min=state.purified?25:1,levels=[],known=Number(observed?.calculatedLevel);if(Number.isFinite(known)&&known>=min&&known<=cap&&Number.isInteger(known*2)){const exact=stats(db,p,iv,known);if(exact.cp===cp&&exact.h===hp)return {status:'growth',levels:[known],level:known,cap,message:'육성 적용 레벨 '+known};}for(let l=min;l<=cap;l+=.5){const s=stats(db,p,iv,l);if(s.cp===cp&&(!hp||s.h===hp))levels.push(l)}if(levels.length)return {status:levels.length===1?'matched':'range',levels,level:levels.length===1?levels[0]:null,cap,message:levels.length===1?`추정 레벨 ${levels[0]} · CP${hp?'·HP':''} 일치`:`추정 레벨 ${levels[0]}–${levels.at(-1)} · ${levels.length}개 후보`};const boosted=[];for(let l=Math.max(min,cap+.5);l<=Math.min(51,cap+1);l+=.5){const s=stats(db,p,iv,l);if(s.cp===cp&&(!hp||s.h===hp))boosted.push(l)}return {status:boosted.length?'buddy':'mismatch',levels:boosted,level:null,cap,message:boosted.length?`레벨 ${boosted.join('/')} 가능 · 베스트파트너 보너스 확인 필요`:'일치하는 레벨 없음 · 종·폼·IV·CP·HP·트레이너 레벨을 확인하세요.'}}
 
-export function parseCPText(text){const m=text.match(/(?:CP|cp)\s*[:：]?\s*([0-9][0-9, .]{0,8})/);if(!m)return null;const n=Number(m[1].replace(/[^0-9]/g,''));return n>=10&&n<=20000?n:null}
+export function parseCPText(text){
+ const values=new Set();
+ for(const match of text.normalize('NFKC').matchAll(/\bC[ \t]*P\s*:?\s*(\d(?:[ \t,.]*\d)*)(?![\d.,])/gi)){
+  const value=Number(match[1].replace(/\D/g,''));
+  if(value>=10&&value<=20000)values.add(value);
+ }
+ return values.size===1?[...values][0]:null;
+}
 
 // CP-only local template OCR. Never treats a low-confidence read as a verified value.
 function normalize(mask,w,h){let x0=w,y0=h,x1=-1,y1=-1;for(let y=0;y<h;y++)for(let x=0;x<w;x++)if(mask[y*w+x]){x0=Math.min(x0,x);x1=Math.max(x1,x);y0=Math.min(y0,y);y1=Math.max(y1,y)}if(x1<0)return null;const out=[];for(let y=0;y<28;y++)for(let x=0;x<18;x++){const sx=Math.min(x1,Math.floor(x0+(x+.5)*(x1-x0+1)/18)),sy=Math.min(y1,Math.floor(y0+(y+.5)*(y1-y0+1)/28));out.push(mask[sy*w+sx]?1:0)}return out}
