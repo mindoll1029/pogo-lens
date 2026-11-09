@@ -4,3 +4,10 @@ const db=JSON.parse(fs.readFileSync(new URL('../dist/data.json',import.meta.url)
 test('Power count adds half levels, recalculates CP and retains IV; repeated growth is exact',()=>{const a=applyGrowth(db,card,40,{kind:'power',count:3}),b=applyGrowth(db,a,40,{kind:'power',count:2});assert.equal(a.observed.calculatedLevel,21.5);assert.equal(b.observed.calculatedLevel,22.5);assert.equal(inferLevel(db,p,iv,40,b.observed).level,22.5);assert.deepEqual(b.iv,iv);assert.ok(b.observed.cp>s.cp);assert.equal(b.growthHistory.length,2);assert.equal(resetGrowth(b).observed.cp,s.cp);assert.equal(resetGrowth(b).growthHistory,undefined)});
 test('Exact evolution steps change species, preserve level and clear unconfirmed moves',()=>{assert.ok(evolutionTargets(db,p,2).some(x=>x.p.id==='venusaur'));const a=applyGrowth(db,card,40,{kind:'evolve',count:2,target:'venusaur'});assert.equal(a.species,'venusaur');assert.equal(a.observed.calculatedLevel,20);assert.equal(a.fast,'');assert.ok(a.observed.cp>s.cp);assert.deepEqual(a.iv,iv);assert.throws(()=>applyGrowth(db,card,40,{kind:'evolve',count:1,target:'venusaur'}));assert.throws(()=>applyGrowth(db,card,40,{kind:'evolve',count:2,target:'venusaur',fast:'SPLASH'}));});
 test('Power caps, invalid counts and unresolved original levels are blocked',()=>{assert.throws(()=>applyGrowth(db,card,10,{kind:'power',count:1}));assert.throws(()=>applyGrowth(db,card,40,{kind:'power',count:1.5}));assert.throws(()=>applyGrowth(db,{...card,observed:{}},40,{kind:'power',count:1}));const invalid={cp:s.cp,hp:s.h,calculatedLevel:50};assert.equal(inferLevel(db,p,iv,40,invalid).level,20)});
+
+test('Second charged move survives power up and reset, and is cleared after evolution',()=>{
+ const owned={...card,charged2:'SEED_BOMB'};
+ const powered=applyGrowth(db,owned,40,{kind:'power',count:1});assert.equal(powered.charged2,'SEED_BOMB');
+ const evolved=applyGrowth(db,owned,40,{kind:'evolve',count:1,target:'ivysaur'});assert.equal(evolved.charged2,'');
+ assert.equal(resetGrowth(evolved).charged2,'SEED_BOMB');
+});
