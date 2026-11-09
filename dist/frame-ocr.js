@@ -17,8 +17,7 @@ async function getReader() {
   workerPath:new URL('worker.min.js',folder).href,
   corePath:new URL('tesseract-core-lstm.wasm.js',folder).href,
   langPath:folder.href.slice(0,-1),
-  workerBlobURL:false,
-  cacheMethod:'none'
+  workerBlobURL:false
  });
 }
 
@@ -107,12 +106,11 @@ export async function recognizeFrame(canvas,db,iv,trainer,known={}) {
  if(!result.name&&!known.species){
   text+='\n'+await read(crop(overview,.12,.39,.76,.53,1.4));
  }
- let cpText='';
- if(!known.cp){
+ const fromOverview=cpFromOverview(text);
+ let cpText=fromOverview?String(fromOverview):'';
+ if(!known.cp&&!fromOverview){
   cpText=await read(crop(overview,.26,.025,.51,.12,2));
   if(!readCPDigits(cpText))cpText=await read(crop(overview,.25,.025,.52,.26,1.6));
-  const fromOverview=cpFromOverview(text);
-  if(fromOverview)cpText=String(fromOverview);
  }
  return readObservation(db,text,iv,trainer,{...known,cpText,appearance});
 }
