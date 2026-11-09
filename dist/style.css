@@ -80,6 +80,24 @@ button.card { text-align: left; display: block; min-width: 0; padding: 0; overfl
 .ivline strong { font-size: var(--text-xl); font-variant-numeric: tabular-nums; }
 .ivline span { font-size: var(--text-sm); }
 .previewbadges, .cardpreviews { display: flex; flex-wrap: wrap; gap: var(--space-xs); margin-top: var(--space-md); }
+.league-badge {
+  display: grid;
+  grid-template-columns: auto minmax(0,1fr) auto;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.55rem;
+  border: 1px solid var(--color-rule);
+  border-radius: 0.65rem;
+  min-width: 0;
+}
+.cardpreviews .league-badge { width: 100%; }
+.previewbadges .league-badge { flex: 1 1 12rem; }
+#results > .league-badge { margin-block: 0.45rem; }
+.league-badge img.league-icon { width: 1.8rem; height: 1.8rem; object-fit: contain; border-radius: 0.2rem; }
+.league-label { display: grid; gap: 0.18rem; overflow-wrap: anywhere; font-size: 0.86rem; }
+.league-label small { font-size: 0.75rem; }
+.league-percent { font-size: 1rem; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.card-level { margin-block: 0.3rem 0; }
 .pvpbadge { font-size: var(--text-sm); font-weight: 700; line-height: 1.6; padding-right: var(--space-xs); }
 .empty { padding: var(--space-xl) var(--space-lg); background: var(--color-paper-3); border-radius: var(--radius-card); }
 .empty h3 { margin-bottom: var(--space-sm); }

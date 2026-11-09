@@ -1,6 +1,7 @@
 import {detect,signature,distance} from './vision.js';
 import {applyGrowth,resetGrowth,evolutionTargets} from './growth.js';
-import {renderResults,candidateKey} from './result-view.js';
+import {recognizeFrame} from './frame-ocr.js';
+import {renderResults,candidateKey,leagueBadge} from './result-view.js';
 import {legalMoves,trainerCap,inferLevel,recognizeCP,digitTemplates} from './observation.js';
 const $=s=>document.querySelector(s), el=(tag,cls,text)=>{const n=document.createElement(tag);if(cls)n.className=cls;if(text!==undefined)n.textContent=text;return n};
 const db=await fetch('data.json').then(r=>{if(!r.ok)throw Error('DB 로드 실패');return r.json()});
@@ -12,7 +13,18 @@ try{cal=JSON.parse(localStorage.getItem('go-lens-cal')||'null')}catch{}
 function status(s){$('#status').textContent=s}
 async function transaction(mode,fn){if(!storage)throw Error('기기 저장소를 사용할 수 없습니다.');return new Promise((resolve,reject)=>{const t=storage.transaction('cards',mode),req=fn(t.objectStore('cards'));let value;req.onsuccess=()=>value=req.result;t.oncomplete=()=>resolve(value);t.onerror=()=>reject(t.error);t.onabort=()=>reject(t.error)})}
 async function save(card){try{await transaction('readwrite',s=>s.put(card));}catch{status('기기 저장에 실패했습니다. 탭을 닫기 전에 백업을 내보내세요.')}const i=cards.findIndex(x=>x.id===card.id);if(i<0)cards.push(card);else cards[i]=card;render()}
-function render(){const root=$('#cards');root.replaceChildren();$('#count').textContent=cards.length;$('#empty').hidden=!!cards.length;for(const c of [...cards].reverse()){const b=el('button','card');b.type='button';const img=el('img');img.src=c.image;img.alt=c.demo?'예제 조사 화면':`조사 화면 ${c.time?.toFixed(1)||0}초`;b.append(img);const body=el('div','cardbody');body.append(el('h3',null,db.pokemon.find(p=>p.id===c.species)?.name||'포켓몬 미확인'));const line=el('div','ivline');line.append(el('strong',null,c.iv?.every(Number.isInteger)?c.iv.join(' / '):'IV 판독 대기'));body.append(line);if(c.preview?.length){const badges=el('div','cardpreviews');for(const x of c.preview)badges.append(el('span','pvpbadge',`${x.cap===1500?'슈퍼':'하이퍼'} / ${db.pokemon.find(p=>p.name===x.name||p.englishName===x.name)?.name||x.name} ${x.percentile.toFixed(1)}%`));body.append(badges)}b.append(body);b.onclick=()=>open(c);root.append(b)}}
+function render(){const root=$('#cards');root.replaceChildren();$('#count').textContent=cards.length;$('#empty').hidden=!!cards.length;for(const c of [...cards].reverse()){const b=el('button','card');b.type='button';const img=el('img');img.src=c.image;img.alt=c.demo?'예제 조사 화면':`조사 화면 ${c.time?.toFixed(1)||0}초`;b.append(img);const body=el('div','cardbody');body.append(el('h3',null,db.pokemon.find(p=>p.id===c.species)?.name||'포켓몬 미확인'));const line=el('div','ivline');
+ if(c.iv?.every(Number.isInteger)){
+  const percent=c.iv.reduce((sum,value)=>sum+value,0)/45*100;
+  line.append(el('strong',null,c.iv.join(' / ')),el('small',null,percent.toFixed(1)+'% IV'));
+ }else line.append(el('strong',null,'IV 확인 필요'));
+ body.append(line);
+ const trainer=Number($('#trainer').value),pokemon=db.pokemon.find(p=>p.id===c.species);
+ if(pokemon&&c.iv&&validTrainer()){
+  const estimate=inferLevel(db,pokemon,c.iv,trainer,c.observed,{purified:c.purified});
+  const level=estimate.level??(estimate.status==='range'?estimate.levels[0]+'–'+estimate.levels.at(-1):null);
+  body.append(el('p','card-level',level?'레벨 '+level:'레벨 확인 필요'));
+ }if(c.preview?.length){const badges=el('div','cardpreviews');for(const x of c.preview)badges.append(leagueBadge(x.cap,db.pokemon.find(p=>p.englishName===x.name)?.name||x.name,x.percentile));body.append(badges)}b.append(body);b.onclick=()=>open(c);root.append(b)}}
 try{cards=await transaction('readonly',s=>s.getAll());render()}catch{status('기기 저장소 사용 불가 / 현재 탭에서는 분석과 백업이 가능합니다.')}
 const worker=new Worker('worker.js',{type:'module'}),pending=new Map();worker.onmessage=({data})=>{const p=pending.get(data.id);if(p){pending.delete(data.id);clearTimeout(p.timer);data.error?p.reject(Error(data.error)):p.resolve(data.result)}};worker.onerror=()=>{for(const p of pending.values()){clearTimeout(p.timer);p.reject(Error('분석 작업을 실행하지 못했습니다. 페이지를 새로 열어 주세요.'))}pending.clear()};
 function calculate(data){return new Promise((resolve,reject)=>{const id=++job,timer=setTimeout(()=>{pending.delete(id);reject(Error('계산 시간이 초과되었습니다. 다시 시도해 주세요.'))},60000);pending.set(id,{resolve,reject,timer});worker.postMessage({id,db,...data})})}
@@ -37,11 +49,40 @@ $('#download').onclick=()=>{const a=el('a');a.href=selected.image;a.download=`go
 $('#delete').onclick=async()=>{if(!editing)return;if(!selected||!confirm('이 카드와 스크린샷을 기기에서 삭제할까요?'))return;try{await transaction('readwrite',s=>s.delete(selected.id))}catch{}cards=cards.filter(c=>c.id!==selected.id);$('#detail').close();render()};
 $('#clear').onclick=async()=>{if(busy){status('분석을 중지한 뒤 삭제하세요.');return}if(!confirm('이 기기의 모든 분석 카드와 보정 좌표를 삭제할까요? 내보낸 백업은 별도로 남습니다.'))return;try{await transaction('readwrite',s=>s.clear())}catch{}cards=[];cal=null;try{localStorage.removeItem('go-lens-cal')}catch{}render();status('기기에 저장된 카드와 보정 좌표를 삭제했습니다.')};
 const canvas=document.createElement('canvas');function frame(source){const w=source.videoWidth||source.naturalWidth,h=source.videoHeight||source.naturalHeight;if(!w||!h)throw Error('영상/이미지 프레임을 읽지 못했습니다.');canvas.width=Math.min(w,720);canvas.height=Math.round(h*canvas.width/w);const ctx=canvas.getContext('2d',{willReadFrequently:true});ctx.drawImage(source,0,0,canvas.width,canvas.height);return ctx.getImageData(0,0,canvas.width,canvas.height)}
-async function addFrame(source,time=0,force=false){const pixels=frame(source),r=detect(pixels,cal),sig=signature(pixels);if(!force&&!r.candidate)return false;if(!force&&cards.slice(-30).some(c=>c.sig&&distance(c.sig,sig)<.12))return false;await save({id:crypto.randomUUID(),image:canvas.toDataURL('image/jpeg',.84),time,iv:r.candidate?r.iv:null,confidence:force?'수동 저장 / 확인 필요':r.confidence,sig,confirmed:false});return true}
+async function addFrame(source,time=0,force=false){
+ const pixels=frame(source),detected=detect(pixels,cal),sig=signature(pixels);
+ if(!force&&!detected.candidate)return false;
+ if(!force&&cards.slice(-30).some(c=>c.sig&&distance(c.sig,sig)<.12))return false;
+ const image=canvas.toDataURL('image/jpeg',.84);
+ const iv=detected.candidate?detected.iv:null;
+ const trainer=Number($('#trainer').value);
+ const card={id:crypto.randomUUID(),image,time,iv,confidence:detected.confidence||'조사 화면을 확인하세요.',sig,confirmed:false};
+ if(detected.candidate){
+  try{
+   const {pokemon,observed}=await recognizeFrame(canvas,db,iv,trainer);
+   card.observed=observed;
+   if(pokemon)card.species=pokemon.id;
+   if(pokemon&&iv&&detected.tracks){
+    const inference=inferLevel(db,pokemon,iv,trainer,observed);
+    if(['matched','range'].includes(inference.status)){
+     const result=await calculate({mode:'preview',p:pokemon,iv,observed,trainer});
+     card.confirmed=true;
+     card.preview=result.previews;
+     card.trainer=trainer;
+    }
+   }
+  }catch{
+   card.confidence='자동 판독을 완료하지 못했습니다. 수정하기에서 확인하세요.';
+  }
+ }
+ await save(card);
+ return true;
+}
 function waitVideo(v,event,action){return new Promise((resolve,reject)=>{const timer=setTimeout(()=>finish(Error('영상을 읽는 시간이 초과되었습니다. MP4 또는 스크린샷으로 다시 시도하세요.')),20000),ok=()=>finish(),bad=()=>finish(Error('이 브라우저가 영상 코덱을 재생하지 못합니다. H.264 MP4 또는 스크린샷을 사용하세요.'));function finish(err){clearTimeout(timer);v.removeEventListener(event,ok);v.removeEventListener('error',bad);err?reject(err):resolve()}v.addEventListener(event,ok,{once:true});v.addEventListener('error',bad,{once:true});action()})}
 $('#stop').onclick=()=>{cancel=true;status('현재 프레임 처리 후 중지합니다. 저장된 카드는 유지됩니다.')};
 $('#capture').onclick=async()=>{if(busy)return;try{await addFrame($('#video'),$('#video').currentTime,true);status('현재 장면을 저장했습니다. 카드를 선택해 교정하세요.')}catch(e){status(e.message)}};
-async function importFiles(files){if(busy)return;if(!validTrainer()){openSettings();$('#files').value='';return}busy=true;cancel=false;$('#files').disabled=true;$('#stop').hidden=false;$('#progress').hidden=false;let n=0;try{for(const file of files){if(cancel)break;if(file.type.startsWith('image/')){const url=URL.createObjectURL(file);try{const img=await loadImage(url);await addFrame(img,0,true);n++}finally{URL.revokeObjectURL(url)}continue}if(!file.type.startsWith('video/')&&!/\.(mp4|mov|m4v)$/i.test(file.name)){status('영상 또는 이미지 파일만 선택하세요.');continue}if(file.size>1024**3)throw Error('영상은 1GB 이하로 나누어 선택하세요.');if(videoURL)URL.revokeObjectURL(videoURL);videoURL=URL.createObjectURL(file);const v=$('#video');await waitVideo(v,'loadedmetadata',()=>{v.src=videoURL;v.load()});$('#videoPanel').hidden=false;if(!Number.isFinite(v.duration)||v.duration>900)throw Error('MVP는 최대 15분 영상까지 지원합니다. 짧게 나누어 주세요.');v.pause();const step=Number($('#interval').value);for(let t=.05;t<v.duration&&!cancel;t+=step){await waitVideo(v,'seeked',()=>v.currentTime=Math.min(t,v.duration-.001));if(await addFrame(v,t))n++;$('#progress').value=t/v.duration;status(`${Math.floor(t)} / ${Math.floor(v.duration)}초 확인 / 새 카드 ${n}개 / 화면을 열어 두세요.`);await new Promise(r=>setTimeout(r,0))}}status(`${cancel?'중지':'분석 완료'} / 새 카드 ${n}개. ${n?'카드에서 종과 IV를 확인하세요.':'탐지된 화면이 없으면 미리보기에서 직접 저장하거나 스크린샷을 추가하세요.'}`)}catch(e){status(e.message)}finally{busy=false;$('#files').disabled=false;$('#files').value='';$('#stop').hidden=true;$('#progress').hidden=true}}
+let queuedFiles=[];
+async function importFiles(files){if(busy||!files.length)return;if(!validTrainer()){queuedFiles=files;openSettings();return}busy=true;cancel=false;$('#files').disabled=true;$('#stop').hidden=false;$('#progress').hidden=false;let n=0;try{for(const file of files){if(cancel)break;if(file.type.startsWith('image/')||/\.(png|jpe?g|webp|heic|heif)$/i.test(file.name)){const url=URL.createObjectURL(file);try{const img=await loadImage(url);await addFrame(img,0,true);n++}finally{URL.revokeObjectURL(url)}continue}if(!file.type.startsWith('video/')&&!/\.(mp4|mov|m4v)$/i.test(file.name)){status('영상 또는 이미지 파일만 선택하세요.');continue}if(file.size>1024**3)throw Error('영상은 1GB 이하로 나누어 선택하세요.');if(videoURL)URL.revokeObjectURL(videoURL);videoURL=URL.createObjectURL(file);const v=$('#video');await waitVideo(v,'loadedmetadata',()=>{v.src=videoURL;v.load()});$('#videoPanel').hidden=false;if(!Number.isFinite(v.duration)||v.duration>900)throw Error('MVP는 최대 15분 영상까지 지원합니다. 짧게 나누어 주세요.');v.pause();const step=Number($('#interval').value);for(let t=.05;t<v.duration&&!cancel;t+=step){await waitVideo(v,'seeked',()=>v.currentTime=Math.min(t,v.duration-.001));if(await addFrame(v,t))n++;$('#progress').value=t/v.duration;status(`${Math.floor(t)} / ${Math.floor(v.duration)}초 확인 / 새 카드 ${n}개 / 화면을 열어 두세요.`);await new Promise(r=>setTimeout(r,0))}}status(`${cancel?'중지':'분석 완료'} / 새 카드 ${n}개. ${n?'자동 분석 결과를 확인하세요. 확인이 필요한 값은 카드에서 수정할 수 있습니다.':'탐지된 화면이 없으면 미리보기에서 직접 저장하거나 스크린샷을 추가하세요.'}`)}catch(e){status(e.message)}finally{busy=false;$('#files').disabled=false;$('#files').value='';$('#stop').hidden=true;$('#progress').hidden=true}}
 $('#files').onchange=e=>importFiles([...e.target.files]);const drop=$('#drop');drop.ondragover=e=>{e.preventDefault();drop.classList.add('drag')};drop.ondragleave=()=>drop.classList.remove('drag');drop.ondrop=e=>{e.preventDefault();drop.classList.remove('drag');importFiles([...e.dataTransfer.files])};
 $('#demo').onclick=async()=>{if(!$('#trainer').value)$('#trainer').value=40;const cv=document.createElement('canvas');cv.width=390;cv.height=720;const c=cv.getContext('2d');c.fillStyle='#e9eee0';c.fillRect(0,0,390,720);c.fillStyle='#456347';c.font='20px sans-serif';c.fillText('CP1400',135,65);c.font='16px sans-serif';c.fillText('예제 / 마릴리',40,100);c.font='100px sans-serif';c.fillText('◎',145,240);c.fillStyle='#fffdf5';c.fillRect(28,350,334,300);c.fillStyle='#3e5c42';c.font='18px sans-serif';c.fillText('EXAMPLE / 0 / 15 / 15',48,390);['ATTACK','DEFENSE','HP'].forEach((t,i)=>{c.fillStyle='#50684a';c.font='12px sans-serif';c.fillText(t,48,428+i*60);c.fillStyle='#e3e5d9';c.fillRect(48,440+i*60,270,10);if(i){c.fillStyle='#ec9a48';c.fillRect(48,440+i*60,270,10)}});await save({id:crypto.randomUUID(),image:cv.toDataURL('image/jpeg'),demo:true,species:'azumarill',iv:[0,15,15],observed:{cp:1400},trainer:40,confirmed:true,confidence:'예제 데이터 / 실제 포켓몬 아님',time:0});status('예제 카드를 추가했습니다. 선택하면 계산 결과를 볼 수 있습니다.')};
 
@@ -70,9 +111,9 @@ function showError(message){const field=$('#save-feedback');field.textContent=me
 let trainerBeforeSettings='',speciesBeforePicker='';
 function openSettings(){trainerBeforeSettings=$('#trainer').value;$('#settings-error').hidden=true;if(!$('#settings-dialog').open)$('#settings-dialog').showModal();$('#trainer').focus()}
 $('#settings-open').onclick=openSettings;
-function cancelSettings(){$('#trainer').value=trainerBeforeSettings;$('#settings-dialog').close()}
-$('#settings-cancel').onclick=cancelSettings;$('#settings-dialog').addEventListener('cancel',()=>{$('#trainer').value=trainerBeforeSettings});
-$('#settings-form').onsubmit=async e=>{e.preventDefault();if(!validTrainer()){$('#settings-error').textContent='1부터 80까지의 레벨을 입력하세요.';$('#settings-error').hidden=false;return}try{localStorage.setItem('go-lens-trainer',$('#trainer').value)}catch{}$('#settings-dialog').close();if($('#detail').open){updateEstimate();if(selected?.confirmed&&!editing)await analyze(false)}};
+function cancelSettings(){queuedFiles=[];$('#files').value='';$('#trainer').value=trainerBeforeSettings;$('#settings-dialog').close()}
+$('#settings-cancel').onclick=cancelSettings;$('#settings-dialog').addEventListener('cancel',()=>{queuedFiles=[];$('#files').value='';$('#trainer').value=trainerBeforeSettings});
+$('#settings-form').onsubmit=async e=>{e.preventDefault();if(!validTrainer()){$('#settings-error').textContent='1부터 80까지의 레벨을 입력하세요.';$('#settings-error').hidden=false;return}try{localStorage.setItem('go-lens-trainer',$('#trainer').value)}catch{}$('#settings-dialog').close();render();const files=queuedFiles;queuedFiles=[];if(files.length)await importFiles(files);if($('#detail').open){updateEstimate();if(selected?.confirmed&&!editing)await analyze(false)}};
 $('#choose-species').onclick=()=>{if(!editing)return;speciesBeforePicker=$('#species').value;$('#search').value='';speciesOptions('',speciesBeforePicker);$('#species-apply').disabled=!$('#species').value;$('#species-picker').showModal();$('#search').focus()};
 function cancelSpecies(){speciesOptions('',speciesBeforePicker);$('#species-picker').close()}
 $('#species-cancel').onclick=cancelSpecies;$('#species-picker').addEventListener('cancel',()=>speciesOptions('',speciesBeforePicker));
