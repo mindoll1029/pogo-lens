@@ -51,19 +51,31 @@ function render(){
  $('#cards').replaceChildren(...cards.slice().reverse().map(renderCard));
  syncCollection();
 }
-function renderCard(c){const b=el('button','card');b.type='button';const img=el('img','card-shot');img.loading='lazy';img.decoding='async';img.src=c.image;img.alt=c.demo?'예제 조사 화면':`조사 화면 ${c.time?.toFixed(1)||0}초`;const crop=el('div','card-shot-crop');crop.append(img);b.append(crop);const body=el('div','cardbody');body.append(el('h3',null,db.pokemon.find(p=>p.id===c.species)?.name||(c.recognizedName?c.recognizedName+' · 폼 확인 필요':'포켓몬 미확인')));const line=el('div','ivline');
+function renderCard(c){
+ const b=el('button','card');b.type='button';
+ const crop=el('div','card-shot-crop'),img=el('img','card-shot');
+ img.loading='lazy';img.decoding='async';
+ img.alt=c.demo?'예제 조사 화면':`조사 화면 ${c.time?.toFixed(1)||0}초`;
+ img.onload=()=>crop.style.setProperty('--shot-ratio',img.naturalWidth/img.naturalHeight);
+ img.src=c.image;
+ crop.append(img);b.append(crop);
+ const body=el('div','cardbody');
+ body.append(el('h3',null,db.pokemon.find(p=>p.id===c.species)?.name||(c.recognizedName?c.recognizedName+' · 폼 확인 필요':'포켓몬 미확인')));
+ const line=el('div','ivline');
  if(c.iv?.every(Number.isInteger)){
   const percent=c.iv.reduce((sum,value)=>sum+value,0)/45*100;
   line.append(el('strong',null,c.iv.join(' / ')),el('small',null,percent.toFixed(1)+'% IV'));
  }else line.append(el('strong',null,'IV 확인 필요'));
  body.append(line);
- if(c.observed?.cp)body.append(el('p','card-level','CP '+c.observed.cp));
- const trainer=Number($('#trainer').value)||c.trainer,pokemon=db.pokemon.find(p=>p.id===c.species);
- if(pokemon&&c.iv&&Number.isInteger(trainer)&&trainer>=1&&trainer<=80){
-  const estimate=inferLevel(db,pokemon,c.iv,trainer,c.observed,{purified:c.purified});
-  const level=estimate.level??(estimate.status==='range'?estimate.levels[0]+'–'+estimate.levels.at(-1):null);
-  body.append(el('p','card-level',level?'레벨 '+level:'레벨 확인 필요'));
- }const visiblePreviews=c.preview?.filter(x=>!c.observed?.cp||c.observed.cp<=x.cap);if(visiblePreviews?.length){const badges=el('div','cardpreviews');for(const x of visiblePreviews)badges.append(leagueBadge(x.cap,null,x.percentile,db.pokemon.find(p=>p.englishName===x.name)?.name||x.name));body.append(badges)}b.append(body);if(selectingCards)b.setAttribute('aria-pressed',String(selectedCards.has(c.id)));
+ if(c.observed?.cp)body.append(el('p','card-cp','CP '+c.observed.cp));
+ const visiblePreviews=c.preview?.filter(x=>!c.observed?.cp||c.observed.cp<=x.cap);
+ if(visiblePreviews?.length){
+  const badges=el('div','cardpreviews');
+  for(const x of visiblePreviews)badges.append(leagueBadge(x.cap,'',x.percentile));
+  body.append(badges);
+ }
+ b.append(body);
+ if(selectingCards)b.setAttribute('aria-pressed',String(selectedCards.has(c.id)));
  b.onclick=()=>{
   if(!selectingCards){open(c);return}
   if(selectedCards.has(c.id))selectedCards.delete(c.id);

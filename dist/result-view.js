@@ -5,11 +5,15 @@ export function leagueBadge(cap,name,percentile,sub=''){
  const league=cap===1500?'슈퍼리그':cap===2500?'하이퍼리그':'마스터리그';
  const row=el('div','league-badge'),icon=el('img','league-icon');
  icon.src=cap===1500?'badges/great.png':cap===2500?'badges/ultra.png':'badges/master.png';
- icon.alt='';
- const label=el('span','league-label');
- label.append(el('span',null,name||league));
- if(sub)label.append(el('small',null,sub));
- row.append(icon,label,el('strong','league-percent',percentile.toFixed(2)+'%'));
+ icon.alt=name===''?league:'';
+ row.append(icon);
+ if(name!==''){
+  const label=el('span','league-label');
+  label.append(el('span',null,name||league));
+  if(sub)label.append(el('small',null,sub));
+  row.append(label);
+ }
+ row.append(el('strong','league-percent',percentile.toFixed(2)+'%'));
  return row;
 }
 function heading(root,text){root.append(el('h3','resulttitle',text))}
