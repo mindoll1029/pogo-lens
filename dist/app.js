@@ -1,7 +1,7 @@
 import {typeIcon} from './move-types.js';
-import {detect,signature,distance,sameAppraisal,fullBarCorrection} from './vision.js';
+import {detect,signature,distance,sameAppraisal,sameVideoPokemon,fullBarCorrection} from './vision.js';
 import {applyGrowth,resetGrowth,evolutionTargets} from './growth.js';
-import {recognizeFrame,formAppearance} from './frame-ocr.js';
+import {recognizeFrame,formAppearance,prepareFrameReader} from './frame-ocr.js';
 import {renderResults,leagueBadge} from './result-view.js';
 import {legalMoves,trainerCap,inferLevel,recognizeCP,digitTemplates} from './observation.js';
 const $=s=>document.querySelector(s), el=(tag,cls,text)=>{const n=document.createElement(tag);if(cls)n.className=cls;if(text!==undefined)n.textContent=text;return n};
@@ -11,7 +11,7 @@ let editCalSnapshot=null;
 let collectionView='grid';try{collectionView=localStorage.getItem('go-lens-view')==='list'?'list':'grid'}catch{}
 function setCollectionView(view){collectionView=view;$('#cards').classList.toggle('list-view',view==='list');for(const mode of ['grid','list'])$('#'+mode+'-view').setAttribute('aria-pressed',String(mode===view));try{localStorage.setItem('go-lens-view',view)}catch{}}
 $('#grid-view').onclick=()=>setCollectionView('grid');$('#list-view').onclick=()=>setCollectionView('list');setCollectionView(collectionView);
-function updateMoveTypes(){for(const id of ['fast','charged','charged2']){const move=db.moves[$('#'+id).value];$('#'+id+'-type').replaceChildren(...(move?[typeIcon(move.type)]:[]));}}
+function updateMoveTypes(){for(const id of ['fast','charged','charged2']){const field=$('#'+id),move=db.moves[field.value];field.dataset.previous=field.value;$('#'+id+'-type').replaceChildren(...(move?[typeIcon(move.type)]:[]));}}
 
 let editing=false,saving=false,editRevision=0;
 let cards=[],selected=null,cancel=false,busy=false,videoURL=null,cal=null,calpoints=null,job=0;
@@ -199,10 +199,13 @@ async function recoverObservation(card){
  }
  return updated;
 }
-async function addFrame(source,time=0,stableFrame){
+async function addFrame(source,time=0,stableFrame,scene){
  const pixels=stableFrame?.pixels??frame(source),detected=stableFrame?.detected??detect(pixels,cal);
  const sig=signature(pixels);
- if(stableFrame&&cards.slice(-30).some(c=>c.sig&&c.iv?.every((iv,i)=>iv===detected.iv[i])&&distance(c.sig,sig)<.12))return false;
+ if(scene){
+  const duplicate=cards.slice(-30).find(c=>c.sig&&c.iv?.every((iv,i)=>iv===detected.iv[i])&&distance(c.sig,sig)<.12);
+  if(duplicate){scene.last={detected,card:duplicate};return false}
+ }
  if(stableFrame)canvas.getContext('2d').putImageData(pixels,0,0);
  const image=canvas.toDataURL('image/jpeg',.84);
  const iv=detected.candidate?detected.iv:null;
@@ -213,6 +216,7 @@ async function addFrame(source,time=0,stableFrame){
   if(name)card.recognizedName=name;
   card.observed=observed;
   if(pokemon)card.species=pokemon.id;
+  if(scene&&sameVideoPokemon(scene.last,{detected,card}))return false;
   if(pokemon&&iv&&verified&&detected.tracks){
    const inference=inferLevel(db,pokemon,iv,trainer,observed);
    if(['matched','range'].includes(inference.status)){
@@ -226,6 +230,7 @@ async function addFrame(source,time=0,stableFrame){
   card.confidence='자동 판독을 완료하지 못했습니다. 수정하기에서 확인하세요.';
  }
  await save(card);
+ if(scene)scene.last={detected,card};
  return true;
 }
 function waitVideo(v,event,action){return new Promise((resolve,reject)=>{const timer=setTimeout(()=>finish(Error('영상을 읽는 시간이 초과되었습니다. MP4 또는 스크린샷으로 다시 시도하세요.')),20000),ok=()=>finish(),bad=()=>finish(Error('이 브라우저가 영상 코덱을 재생하지 못합니다. H.264 MP4 또는 스크린샷을 사용하세요.'));function finish(err){clearTimeout(timer);v.removeEventListener(event,ok);v.removeEventListener('error',bad);err?reject(err):resolve()}v.addEventListener(event,ok,{once:true});v.addEventListener('error',bad,{once:true});action()})}
@@ -235,25 +240,28 @@ async function readVideoFrame(video,time){
  const pixels=frame(video);
  return {pixels,detected:detect(pixels)};
 }
-async function scanVideoFrame(video,time){
+async function scanVideoFrame(video,time,scene){
  const candidate=await readVideoFrame(video,time);
  // Loose color and calibration matches are useful for manual capture, but insufficient for automatic video import.
- if(cancel||!candidate.detected.tracks)return false;
+ if(cancel||!candidate.detected.tracks){scene.last=null;return false}
  const nextTime=time+.2;
  if(nextTime<video.duration){
   const next=await readVideoFrame(video,nextTime);
   if(cancel)return false;
-  if(sameAppraisal(candidate.detected,next.detected))return addFrame(video,nextTime,next);
+  if(sameAppraisal(candidate.detected,next.detected))return addFrame(video,nextTime,next,scene);
  }
  const previousTime=time-.2;
- if(previousTime<0)return false;
- const previous=await readVideoFrame(video,previousTime);
- return !cancel&&sameAppraisal(candidate.detected,previous.detected)&&addFrame(video,time,candidate);
+ if(previousTime>=0){
+  const previous=await readVideoFrame(video,previousTime);
+  if(!cancel&&sameAppraisal(candidate.detected,previous.detected))return addFrame(video,time,candidate,scene);
+ }
+ scene.last=null;
+ return false;
 }
 $('#stop').onclick=()=>{cancel=true;status('현재 프레임 처리 후 중지합니다. 저장된 카드는 유지됩니다.')};
 $('#capture').onclick=async()=>{if(busy)return;try{await addFrame($('#video'),$('#video').currentTime);status('현재 장면을 저장했습니다. 카드를 선택해 교정하세요.')}catch(e){status(e.message)}};
 let queuedFiles=[];
-async function importFiles(files){if(busy||!files.length)return;if(!validTrainer()){queuedFiles=files;openSettings();return}busy=true;cancel=false;setInlineStatus('#collection-error','');syncCollection();status('파일을 읽는 중입니다…');$('#progress').removeAttribute('value');$('#files').disabled=true;$('#stop').hidden=false;$('#progress').hidden=false;let n=0;try{for(const file of files){if(cancel)break;if(file.type.startsWith('image/')||/\.(png|jpe?g|webp|heic|heif)$/i.test(file.name)){const url=URL.createObjectURL(file);try{const img=await loadImage(url);await addFrame(img);n++}finally{URL.revokeObjectURL(url)}continue}if(!file.type.startsWith('video/')&&!/\.(mp4|mov|m4v)$/i.test(file.name)){status('영상 또는 이미지 파일만 선택하세요.');continue}if(file.size>1024**3)throw Error('영상은 1GB 이하로 나누어 선택하세요.');if(videoURL)URL.revokeObjectURL(videoURL);videoURL=URL.createObjectURL(file);const v=$('#video');await waitVideo(v,'loadedmetadata',()=>{v.src=videoURL;v.load()});$('#videoPanel').hidden=false;if(!Number.isFinite(v.duration)||v.duration>900)throw Error('MVP는 최대 15분 영상까지 지원합니다. 짧게 나누어 주세요.');v.pause();const step=1;for(let t=.05;t<v.duration&&!cancel;t+=step){if(await scanVideoFrame(v,t))n++;$('#progress').value=t/v.duration;status(`${Math.floor(t)} / ${Math.floor(v.duration)}초 확인 / 새 카드 ${n}개 / 화면을 열어 두세요.`);await new Promise(r=>setTimeout(r,0))}}status(cancel?'분석을 중지했습니다.':n?'':'조사 화면을 찾지 못했습니다. 스크린샷을 선택하거나 영상 미리보기에서 장면을 저장하세요.')}catch(e){status('');setInlineStatus('#collection-error',e.message)}finally{busy=false;syncCollection();$('#files').disabled=false;$('#files').value='';$('#stop').hidden=true;$('#progress').hidden=true}}
+async function importFiles(files){if(busy||!files.length)return;if(!validTrainer()){queuedFiles=files;openSettings();return}busy=true;cancel=false;setInlineStatus('#collection-error','');syncCollection();status('파일을 읽는 중입니다…');$('#progress').removeAttribute('value');$('#files').disabled=true;$('#stop').hidden=false;$('#progress').hidden=false;let n=0;try{for(const file of files){if(cancel)break;if(file.type.startsWith('image/')||/\.(png|jpe?g|webp|heic|heif)$/i.test(file.name)){const url=URL.createObjectURL(file);try{void prepareFrameReader().catch(()=>{});const img=await loadImage(url);await addFrame(img);n++}finally{URL.revokeObjectURL(url)}continue}if(!file.type.startsWith('video/')&&!/\.(mp4|mov|m4v)$/i.test(file.name)){status('영상 또는 이미지 파일만 선택하세요.');continue}if(file.size>1024**3)throw Error('영상은 1GB 이하로 나누어 선택하세요.');if(videoURL)URL.revokeObjectURL(videoURL);videoURL=URL.createObjectURL(file);const v=$('#video');await waitVideo(v,'loadedmetadata',()=>{v.src=videoURL;v.load()});$('#videoPanel').hidden=false;if(!Number.isFinite(v.duration)||v.duration>900)throw Error('MVP는 최대 15분 영상까지 지원합니다. 짧게 나누어 주세요.');v.pause();void prepareFrameReader().catch(()=>{});const scene={last:null},step=1;for(let t=.05;t<v.duration&&!cancel;t+=step){if(await scanVideoFrame(v,t,scene))n++;$('#progress').value=t/v.duration;status(`${Math.floor(t)} / ${Math.floor(v.duration)}초 확인 / 새 카드 ${n}개 / 화면을 열어 두세요.`);await new Promise(r=>setTimeout(r,0))}}status(cancel?'분석을 중지했습니다.':n?'':'조사 화면을 찾지 못했습니다. 스크린샷을 선택하거나 영상 미리보기에서 장면을 저장하세요.')}catch(e){status('');setInlineStatus('#collection-error',e.message)}finally{busy=false;syncCollection();$('#files').disabled=false;$('#files').value='';$('#stop').hidden=true;$('#progress').hidden=true}}
 $('#files').onchange=e=>importFiles([...e.target.files]);const drop=$('#drop');drop.ondragover=e=>{e.preventDefault();drop.classList.add('drag')};drop.ondragleave=()=>drop.classList.remove('drag');drop.ondrop=e=>{e.preventDefault();drop.classList.remove('drag');importFiles([...e.dataTransfer.files])};
 $('#demo').onclick=async()=>{if(!$('#trainer').value)$('#trainer').value=40;const cv=document.createElement('canvas');cv.width=390;cv.height=720;const c=cv.getContext('2d');c.fillStyle='#e9eee0';c.fillRect(0,0,390,720);c.fillStyle='#456347';c.font='20px sans-serif';c.fillText('CP1400',135,65);c.font='16px sans-serif';c.fillText('예제 / 마릴리',40,100);c.font='100px sans-serif';c.fillText('◎',145,240);c.fillStyle='#fffdf5';c.fillRect(28,350,334,300);c.fillStyle='#3e5c42';c.font='18px sans-serif';c.fillText('EXAMPLE / 0 / 15 / 15',48,390);['ATTACK','DEFENSE','HP'].forEach((t,i)=>{c.fillStyle='#50684a';c.font='12px sans-serif';c.fillText(t,48,428+i*60);c.fillStyle='#e3e5d9';c.fillRect(48,440+i*60,270,10);if(i){c.fillStyle='#ec9a48';c.fillRect(48,440+i*60,270,10)}});try{await save({id:crypto.randomUUID(),image:cv.toDataURL('image/jpeg'),demo:true,species:'azumarill',iv:[0,15,15],observed:{cp:1400},trainer:40,confirmed:true,confidence:'예제 데이터 / 실제 포켓몬 아님',time:0});setInlineStatus('#collection-error','');status('예제 카드를 추가했습니다. 선택하면 계산 결과를 볼 수 있습니다.')}catch(error){setInlineStatus('#collection-error',error.message)}};
 
@@ -310,7 +318,17 @@ async function saveSelectedMoves(){
   if(revision===editRevision)applyEditMode();
  }
 }
-for(const id of ['fast','charged','charged2'])$('#'+id).onchange=()=>{if(id==='charged'&&$('#charged').value===$('#charged2').value)$('#charged2').value='';if(id==='charged2'&&$('#charged2').value&&$('#charged2').value===$('#charged').value){$('#charged2').value='';setInlineStatus('#move-status','서로 다른 스페셜 기술을 선택해 주세요.');}updateMoveTypes();saveSelectedMoves();};
+for(const id of ['fast','charged','charged2'])$('#'+id).onchange=e=>{
+ const field=e.currentTarget;
+ if(id!=='fast'&&field.value&&$('#charged').value===$('#charged2').value){
+  field.value=field.dataset.previous??'';
+  setInlineStatus('#move-status','서로 다른 스페셜 기술을 선택해 주세요.');
+  return;
+ }
+ updateMoveTypes();
+ setInlineStatus('#move-status','');
+ saveSelectedMoves();
+};
 
 $('#cancel-edit').onclick=async()=>{if(!selected||saving)return;cal=editCalSnapshot?structuredClone(editCalSnapshot):null;const saved=cards.find(c=>c.id===selected.id)||selected;await open(saved)};
 $('#detail').addEventListener('close',()=>{if(editing&&!saving)cal=editCalSnapshot?structuredClone(editCalSnapshot):null;editing=false;editRevision++;calpoints=null;cpPoints=null});
@@ -324,7 +342,18 @@ function openSettings(){trainerBeforeSettings=$('#trainer').value;$('#settings-e
 $('#settings-open').onclick=openSettings;
 function cancelSettings(){queuedFiles=[];$('#files').value='';$('#trainer').value=trainerBeforeSettings;$('#settings-dialog').close()}
 $('#settings-cancel').onclick=cancelSettings;$('#settings-dialog').addEventListener('cancel',()=>{queuedFiles=[];$('#files').value='';$('#trainer').value=trainerBeforeSettings});
-$('#settings-form').onsubmit=async e=>{e.preventDefault();if(!validTrainer()){$('#settings-error').textContent='1부터 80까지의 레벨을 입력하세요.';$('#settings-error').hidden=false;return}try{localStorage.setItem('go-lens-trainer',$('#trainer').value)}catch{}$('#settings-dialog').close();render();const files=queuedFiles;queuedFiles=[];if(files.length)await importFiles(files);if($('#detail').open){updateEstimate();if(selected?.confirmed&&!editing)await analyze(false)}};
+$('#settings-form').onsubmit=async e=>{
+ e.preventDefault();
+ if(!validTrainer()){setInlineStatus('#settings-error','1부터 80까지의 레벨을 입력하세요.');return}
+ try{localStorage.setItem('go-lens-trainer',$('#trainer').value)}
+ catch{setInlineStatus('#settings-error','트레이너 레벨을 저장하지 못했습니다. 브라우저 저장 공간을 확인한 뒤 다시 시도하세요.');return}
+ $('#settings-dialog').close();
+ render();
+ const files=queuedFiles;
+ queuedFiles=[];
+ if(files.length)await importFiles(files);
+ if($('#detail').open){updateEstimate();if(selected?.confirmed&&!editing)await analyze(false)}
+};
 $('#choose-species').onclick=()=>{if(!editing)return;speciesBeforePicker=$('#species').value;$('#search').value='';speciesOptions('',speciesBeforePicker);$('#species-apply').disabled=!$('#species').value;$('#species-picker').showModal();$('#search').focus()};
 function cancelSpecies(){speciesOptions('',speciesBeforePicker);$('#species-picker').close()}
 $('#species-cancel').onclick=cancelSpecies;$('#species-picker').addEventListener('cancel',()=>speciesOptions('',speciesBeforePicker));
@@ -334,7 +363,8 @@ let growthKind='power';
 function updateGrowthSummary(){const history=selected?.growthHistory||[],evolved=history.filter(x=>x.kind==='evolve').reduce((n,x)=>n+x.count,0),powered=history.filter(x=>x.kind==='power').reduce((n,x)=>n+x.count,0);$('#growth-summary').hidden=!history.length;$('#growth-label').textContent=[evolved?'진화 '+evolved+'회':'',powered?'강화 '+powered+'회':''].filter(Boolean).join(' / ')+' 적용';}
 function growthMoves(){const p=db.pokemon.find(x=>x.id===$('#evolve-target').value);if(!p){options($('#evolve-fast'),[],'선택 안 함');options($('#evolve-charged'),[],'선택 안 함');return}const m=legalMoves(db,p,{shadow:selected.shadow,purified:selected.purified,lucky:selected.lucky});options($('#evolve-fast'),m.fast.map(id=>[id,db.moves[id].name]),'선택 안 함');options($('#evolve-charged'),m.charged.map(id=>[id,db.moves[id].name]),'선택 안 함');}
 function refreshGrowth(){const p=db.pokemon.find(x=>x.id===selected?.species);if(!p)return;const count=Number($('#growth-count').value);if(growthKind==='evolve'){const targets=evolutionTargets(db,p,count,{shadow:selected.shadow,purified:selected.purified,lucky:selected.lucky}),previous=$('#evolve-target').value;options($('#evolve-target'),targets.map(x=>[x.p.id,x.p.name]),targets.length?'진화할 포켓몬 선택':'가능한 진화 없음');if(targets.some(x=>x.p.id===previous))$('#evolve-target').value=previous;else if(targets.length===1)$('#evolve-target').value=targets[0].p.id;growthMoves();$('#growth-preview').textContent='진화 횟수에 맞는 종과 기술을 선택하세요.';$('#growth-apply').disabled=!targets.length;}else{$('#growth-apply').disabled=false;try{const result=applyGrowth(db,selected,Number($('#trainer').value),{kind:'power',count});$('#growth-preview').textContent='레벨 '+result.observed.calculatedLevel+' / CP '+result.observed.cp+' / HP '+result.observed.hp;$('#growth-error').hidden=true}catch(e){$('#growth-preview').textContent=e.message;$('#growth-apply').disabled=true}}}
-function openGrowth(kind){if(!selected||editing||saving)return;$('#growth-menu').open=false;if(!validTrainer()){openSettings();return}growthKind=kind;$('#growth-title').textContent=kind==='evolve'?'진화하기':'강화하기';$('#growth-count-label').textContent=kind==='evolve'?'진화 횟수':'강화 횟수 (1회당 0.5레벨)';$('#growth-count').value=1;$('#growth-count').max=kind==='evolve'?10:100;$('#evolve-options').hidden=kind!=='evolve';$('#growth-error').hidden=true;refreshGrowth();$('#growth-dialog').showModal();}
+function openGrowth(kind){if(!selected||editing||saving)return;$('#growth-menu').open=false;if(!validTrainer()){$('#growth-menu > summary').focus();openSettings();return}growthKind=kind;$('#growth-title').textContent=kind==='evolve'?'진화하기':'강화하기';$('#growth-count-label').textContent=kind==='evolve'?'진화 횟수':'강화 횟수 (1회당 0.5레벨)';$('#growth-count').value=1;$('#growth-count').max=kind==='evolve'?10:100;$('#evolve-options').hidden=kind!=='evolve';$('#growth-error').hidden=true;refreshGrowth();$('#growth-dialog').showModal();}
 $('#evolve').onclick=()=>openGrowth('evolve');$('#power-up').onclick=()=>openGrowth('power');$('#growth-count').oninput=refreshGrowth;$('#evolve-target').onchange=growthMoves;$('#growth-cancel').onclick=()=>$('#growth-dialog').close();
+$('#growth-dialog').addEventListener('close',()=>{if($('#detail').open)$('#growth-menu > summary').focus()});
 $('#growth-form').onsubmit=async e=>{e.preventDefault();const button=$('#growth-apply');button.disabled=true;try{const updated=applyGrowth(db,selected,Number($('#trainer').value),{kind:growthKind,count:Number($('#growth-count').value),target:$('#evolve-target').value,fast:$('#evolve-fast').value,charged:$('#evolve-charged').value});await save(updated);$('#growth-dialog').close();await open(updated)}catch(err){$('#growth-error').textContent=err.message;$('#growth-error').hidden=false}finally{button.disabled=false}};
 $('#growth-reset').onclick=async()=>{if(!selected?.growthBase||saving)return;const restored=resetGrowth(selected);try{await save(restored);await open(restored)}catch(error){showError(error.message);$('#save-feedback').focus()}};

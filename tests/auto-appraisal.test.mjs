@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import {detect,fullBarCorrection,sameAppraisal} from '../dist/vision.js';
+import {detect,fullBarCorrection,sameAppraisal,sameVideoPokemon,signature,distance} from '../dist/vision.js';
 import {readObservation,cpFromOverview} from '../dist/frame-ocr.js';
 import {inferLevel} from '../dist/observation.js';
 
@@ -77,4 +77,20 @@ test('Video import requires matching complete appraisal bars across nearby frame
  assert.equal(sameAppraisal(still,filling),false);
  assert.equal(sameAppraisal(still,partial),false);
  assert.equal(sameAppraisal(still,null),false);
+});
+
+test('Adjacent appraisals deduplicate by IV and identity even when the background changes',()=>{
+ const first=appraisalFrame([7,15,15]),second=appraisalFrame([7,15,15]);
+ second.data.fill(84,0,second.width*500*4);
+ assert.ok(distance(signature(first),signature(second))>.12);
+ const a={detected:detect(first),card:{species:'banette',observed:{cp:1998,hp:132}}};
+ const b={detected:detect(second),card:{species:'banette',observed:{cp:1998,hp:132}}};
+ assert.equal(sameVideoPokemon(a,b),true);
+ assert.equal(sameVideoPokemon(a,{...b,card:{...b.card,species:'banette_mega'}}),false);
+ assert.equal(sameVideoPokemon(a,{...b,card:{...b.card,observed:{cp:1999,hp:132}}}),false);
+ assert.equal(sameVideoPokemon(a,{...b,card:{...b.card,observed:{cp:1998,hp:131}}}),false);
+ assert.equal(sameVideoPokemon(a,{...b,card:{species:'banette',observed:{cp:null}}}),false);
+ const unresolved={detected:b.detected,card:{recognizedName:'다크펫',observed:{cp:1998,hp:132}}};
+ assert.equal(sameVideoPokemon(unresolved,unresolved),true);
+ assert.equal(sameVideoPokemon(a,unresolved),false);
 });

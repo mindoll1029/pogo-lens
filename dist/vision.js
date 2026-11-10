@@ -62,6 +62,16 @@ export function sameAppraisal(a,b){
   a.bars.every((bar,i)=>bar.every((position,j)=>Math.abs(position-b.bars[i][j])<(j===2?.005:.012))));
 }
 
+export function sameVideoPokemon(a,b){
+ if(!sameAppraisal(a?.detected,b?.detected))return false;
+ const first=a.card,second=b.card;
+ if(!first.observed?.cp||first.observed.cp!==second.observed?.cp)return false;
+ const hp=first.observed.hp,otherHP=second.observed.hp;
+ if(hp&&otherHP&&hp!==otherHP)return false;
+ if(first.species||second.species)return !!first.species&&first.species===second.species;
+ return !!hp&&hp===otherHP&&!!first.recognizedName&&first.recognizedName===second.recognizedName;
+}
+
 export function fullBarCorrection(iv,matches){
  const candidates=[iv];
  iv.forEach((value,i)=>{

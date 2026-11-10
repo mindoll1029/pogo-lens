@@ -2,6 +2,12 @@ import {inferLevel} from './observation.js';
 
 let reader;
 
+export function prepareFrameReader(){
+ if(location.protocol==='file:')return Promise.resolve(null);
+ reader??=getReader().catch(error=>{reader=null;throw error});
+ return reader;
+}
+
 async function getReader() {
  if(!globalThis.Tesseract) {
   await new Promise((resolve,reject)=>{
@@ -98,8 +104,7 @@ export async function recognizeFrame(canvas,db,iv,trainer,known={}) {
  }
  const overview=crop(canvas,0,.025,1,.625);
  const appearance=known.references?.length?formAppearance(canvas):null;
- reader??=getReader().catch(error=>{reader=null;throw error});
- const worker=await reader;
+ const worker=await prepareFrameReader();
  const read=async image=>(await worker.recognize(image,{tessedit_pageseg_mode:'11'})).data.text;
  let text=await read(overview);
  let result=readObservation(db,text,iv,trainer,known);
