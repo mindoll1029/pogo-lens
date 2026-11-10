@@ -1,9 +1,24 @@
 <!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="theme-color" content="#153f36"><meta name="description" content="녹화 파일을 기기 안에서 분석하는 개인용 포켓몬 GO IV 연구 노트"><title>GO Lens · 나의 포켓몬 연구 노트</title><link rel="stylesheet" href="style.css"></head><body>
 <header><a href="./" class="brand"><span class="logo" aria-hidden="true"></span> GO Lens <small>나의 포켓몬 연구 노트</small></a><div class="header-tools"><span class="private" role="status">기기 내 분석</span><button id="settings-open" type="button" class="quiet menu-button" aria-label="설정 메뉴"><span aria-hidden="true" class="menu-lines"></span></button></div></header>
 <main><section class="workspace" aria-labelledby="upload-title">
-<div class="sectionhead"><h1 id="upload-title">조사 화면 분석</h1><a class="textlink" href="#guide-summary">사용 방법</a></div>
-<label class="drop" id="drop"><span>포켓몬 GO 조사 스크린샷 또는 화면 녹화(MP4, MOV)</span><input id="files" type="file" accept="video/*,image/*" multiple><b class="button">사진·영상 선택</b></label>
-<div class="toolbar"><button id="demo" class="quiet">예제 카드 보기 </button><button id="stop" class="quiet" hidden>분석 중지</button></div><progress aria-label="파일 분석 진행률" id="progress" value="0" max="1" hidden></progress><p id="status" role="status" aria-live="polite">파일은 이 기기에서 분석합니다. 분석이 끝날 때까지 화면을 열어 두세요.</p>
+<div class="workspace-intro">
+  <h1 id="upload-title">조사 화면 <span>분석</span></h1>
+  <svg class="workspace-lens" viewBox="0 0 300 180" fill="none" aria-hidden="true">
+    <path class="lens-guides" d="M48 20H24v24m228-24h24v24M24 136v24h24m228-24v24h-24"/>
+    <circle class="lens-orbit" cx="100" cy="90" r="49"/>
+    <circle class="lens-inner" cx="100" cy="90" r="31"/>
+    <path class="lens-guides" d="M100 35v12m0 86v12M45 90h12m86 0h12"/>
+    <circle class="lens-dot" cx="100" cy="90" r="7"/>
+    <path class="lens-tracks" d="M180 63h69m-69 27h69m-69 27h69"/>
+    <path class="lens-fill" d="M180 63h38m-38 27h69m-69 27h69"/>
+  </svg>
+</div>
+<label class="drop" id="drop">
+  <input id="files" type="file" accept="video/*,image/*" multiple aria-labelledby="upload-action" aria-describedby="upload-formats">
+  <span id="upload-formats">포켓몬 GO 조사 스크린샷 또는 화면 녹화 <span class="file-formats">(MP4, MOV)</span></span>
+  <b class="button" id="upload-action"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 16V4m-5 5 5-5 5 5M4 16v4h16v-4"/></svg>사진·영상 선택</b>
+</label>
+<div class="toolbar"><button id="demo" class="quiet">예제 카드 보기</button><a class="textlink" href="#guide-summary">사용 방법</a><button id="stop" class="quiet" hidden>분석 중지</button></div><progress aria-label="파일 분석 진행률" id="progress" value="0" max="1" hidden></progress><p id="status" role="status" aria-live="polite">파일은 이 기기에서 분석합니다. 분석이 끝날 때까지 화면을 열어 두세요.</p>
 <details id="videoPanel" hidden><summary>영상 미리보기 · 놓친 장면 직접 저장</summary><video id="video" controls playsinline preload="metadata"></video><button id="capture">현재 장면 카드로 저장</button></details></section>
 <section><div class="sectionhead"><div><h2>나의 분석 카드 <span id="count">0</span></h2></div><div class="actions"><div class="view-switch" role="group" aria-label="보기 방식"><button id="grid-view" class="quiet" aria-pressed="true">카드형</button><button id="list-view" class="quiet" aria-pressed="false">목록형</button></div><button id="select-cards" class="quiet">카드 선택</button><button id="delete-selected" class="quiet danger" hidden>선택 삭제</button></div></div><p id="collection-error" class="operation-error" role="alert" hidden></p><div id="cards" class="cards"></div><div id="empty" class="empty"><h3>아직 관찰 기록이 없어요</h3><p>조사 화면이 보이는 녹화를 선택하거나 예제 카드로 먼저 살펴보세요.</p></div></section>
 <details id="guide" class="guide"><summary id="guide-summary">사용 방법과 분석 안내</summary><div class="guidebody"><div><h2>정확한 기록을 위한<br>세 가지 메모.</h2></div><div><h3>조사 화면을 잠깐 멈춰 주세요</h3><p>막대 세 개가 모두 보이도록 1~2초 유지하세요. 조사 막대, 이름, CP를 기기에서 읽어 카드에 표시합니다. 잘못 읽힌 값은 수정하기에서 교정할 수 있습니다. 같은 IV라도 다른 포켓몬일 수 있어 중복은 화면 차이로 판단합니다.</p><h3>자동 분석 결과 확인</h3><p>별명으로 이름을 읽지 못하거나 폼이 여러 가지로 일치하면 종·폼을 직접 지정하세요. 보유 기술과 그림자·정화 상태는 직접 확인해 주세요. CP를 스크린샷에서 읽고 IV·트레이너 레벨과 대조해 개체 레벨을 추정합니다. 읽기 실패 시 CP를 수정할 수 있습니다. PvP 대표 점수는 랭크 백분위수입니다. 진화형·정화 후보를 비교하며 스탯곱 비율은 별도로 표시합니다. 레이드 기술 등급은 동일 종·폼의 중립 기술 조합을 비교하고 S가 최상위입니다.</p><h3>아이폰에서는 파일을 선택하세요</h3><p>웹페이지는 다른 앱의 녹화 화면을 백그라운드에서 실시간으로 읽지 않습니다. iOS 사진 앱에 저장한 파일을 선택하세요. 브라우저가 MOV/HEVC를 재생하지 못하면 H.264 MP4로 변환하거나 스크린샷을 사용하세요.</p></div></div></details>
