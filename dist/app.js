@@ -59,19 +59,20 @@ function renderCard(c){
  img.onload=()=>crop.style.setProperty('--shot-ratio',img.naturalWidth/img.naturalHeight);
  img.src=c.image;
  crop.append(img);b.append(crop);
- const body=el('div','cardbody');
- body.append(el('h3',null,db.pokemon.find(p=>p.id===c.species)?.name||(c.recognizedName?c.recognizedName+' · 폼 확인 필요':'포켓몬 미확인')));
+ const body=el('div','cardbody'),heading=el('div','cardheading');
+ heading.append(el('h3',null,db.pokemon.find(p=>p.id===c.species)?.name||(c.recognizedName?c.recognizedName+' · 폼 확인 필요':'포켓몬 미확인')));
+ if(c.observed?.cp)heading.append(el('p','card-cp','CP '+c.observed.cp));
+ body.append(heading);
  const line=el('div','ivline');
  if(c.iv?.every(Number.isInteger)){
   const percent=c.iv.reduce((sum,value)=>sum+value,0)/45*100;
   line.append(el('strong',null,c.iv.join(' / ')),el('small',null,percent.toFixed(1)+'% IV'));
  }else line.append(el('strong',null,'IV 확인 필요'));
  body.append(line);
- if(c.observed?.cp)body.append(el('p','card-cp','CP '+c.observed.cp));
  const visiblePreviews=c.preview?.filter(x=>!c.observed?.cp||c.observed.cp<=x.cap);
  if(visiblePreviews?.length){
   const badges=el('div','cardpreviews');
-  for(const x of visiblePreviews)badges.append(leagueBadge(x.cap,'',x.percentile));
+  for(const x of visiblePreviews)badges.append(leagueBadge(x.cap,null,x.percentile));
   body.append(badges);
  }
  b.append(body);
