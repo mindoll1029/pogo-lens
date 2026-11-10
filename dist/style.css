@@ -248,8 +248,8 @@ th { font-weight: 700; }
 
 #growth-summary{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:var(--space-sm);padding-block:var(--space-sm);border-bottom:1px solid var(--color-card-rule);margin-bottom:var(--space-md);font-size:var(--text-sm)}#growth-summary .quiet{color:var(--color-card-ink);border-color:var(--color-card-rule)}#growth-error{color:var(--color-card-danger)}.edit-actions{flex-wrap:wrap}#detail:not(.editing) label:has(#iv-confirm){display:none!important}
 /* Show CP through the HP value on appraisal screens. */
-.card-shot-crop { position:relative; align-self:start; width:100%; aspect-ratio:calc(var(--shot-ratio, 0.46) / 0.44); overflow:hidden; background:var(--color-paper-3); }
-.card-shot-crop .card-shot { display:block; width:100%; height:auto; transform:translateY(-5%); }
+.card-shot-crop { position:relative; align-self:start; width:100%; aspect-ratio:calc(var(--shot-ratio, 0.46) / 0.455); overflow:hidden; background:var(--color-paper-3); }
+.card-shot-crop .card-shot { display:block; width:100%; height:auto; transform:translateY(-4.5%); }
 .view-switch { display:flex; gap:0.2rem; }
 .view-switch button[aria-pressed="true"] { background:var(--color-ink); color:var(--color-paper); }
 .cards.list-view { grid-template-columns:minmax(0,1fr); }
