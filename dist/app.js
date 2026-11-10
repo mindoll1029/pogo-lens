@@ -1,5 +1,5 @@
 import {typeIcon} from './move-types.js';
-import {detect,signature,distance,fullBarCorrection} from './vision.js';
+import {detect,signature,distance,sameAppraisal,fullBarCorrection} from './vision.js';
 import {applyGrowth,resetGrowth,evolutionTargets} from './growth.js';
 import {recognizeFrame,formAppearance} from './frame-ocr.js';
 import {renderResults,leagueBadge} from './result-view.js';
@@ -186,42 +186,61 @@ async function recoverObservation(card){
  }
  return updated;
 }
-async function addFrame(source,time=0,force=false){
- const pixels=frame(source),detected=detect(pixels,cal);
- if(!force&&!detected.candidate)return false;
+async function addFrame(source,time=0,stableFrame){
+ const pixels=stableFrame?.pixels??frame(source),detected=stableFrame?.detected??detect(pixels,cal);
  const sig=signature(pixels);
- if(!force&&cards.slice(-30).some(c=>c.sig&&distance(c.sig,sig)<.12))return false;
+ if(stableFrame&&cards.slice(-30).some(c=>c.sig&&c.iv?.every((iv,i)=>iv===detected.iv[i])&&distance(c.sig,sig)<.12))return false;
+ if(stableFrame)canvas.getContext('2d').putImageData(pixels,0,0);
  const image=canvas.toDataURL('image/jpeg',.84);
  const iv=detected.candidate?detected.iv:null;
  const trainer=Number($('#trainer').value);
  const card={id:crypto.randomUUID(),image,time,iv,confidence:detected.confidence||'조사 화면을 확인하세요.',sig,confirmed:false};
- if(detected.candidate||force){
-  try{
-   const {pokemon,name,observed,verified}=await recognizeFrame(canvas,db,iv,trainer,{references:appearanceReferences()});
-   if(name)card.recognizedName=name;
-   card.observed=observed;
-   if(pokemon)card.species=pokemon.id;
-   if(pokemon&&iv&&verified&&detected.tracks){
-    const inference=inferLevel(db,pokemon,iv,trainer,observed);
-    if(['matched','range'].includes(inference.status)){
-     const result=await calculate({mode:'preview',p:pokemon,iv,observed,trainer});
-     card.confirmed=true;
-     card.preview=result.previews;
-     card.trainer=trainer;
-    }
+ try{
+  const {pokemon,name,observed,verified}=await recognizeFrame(canvas,db,iv,trainer,{references:appearanceReferences()});
+  if(name)card.recognizedName=name;
+  card.observed=observed;
+  if(pokemon)card.species=pokemon.id;
+  if(pokemon&&iv&&verified&&detected.tracks){
+   const inference=inferLevel(db,pokemon,iv,trainer,observed);
+   if(['matched','range'].includes(inference.status)){
+    const result=await calculate({mode:'preview',p:pokemon,iv,observed,trainer});
+    card.confirmed=true;
+    card.preview=result.previews;
+    card.trainer=trainer;
    }
-  }catch{
-   card.confidence='자동 판독을 완료하지 못했습니다. 수정하기에서 확인하세요.';
   }
+ }catch{
+  card.confidence='자동 판독을 완료하지 못했습니다. 수정하기에서 확인하세요.';
  }
  await save(card);
  return true;
 }
 function waitVideo(v,event,action){return new Promise((resolve,reject)=>{const timer=setTimeout(()=>finish(Error('영상을 읽는 시간이 초과되었습니다. MP4 또는 스크린샷으로 다시 시도하세요.')),20000),ok=()=>finish(),bad=()=>finish(Error('이 브라우저가 영상 코덱을 재생하지 못합니다. H.264 MP4 또는 스크린샷을 사용하세요.'));function finish(err){clearTimeout(timer);v.removeEventListener(event,ok);v.removeEventListener('error',bad);err?reject(err):resolve()}v.addEventListener(event,ok,{once:true});v.addEventListener('error',bad,{once:true});action()})}
+async function readVideoFrame(video,time){
+ if(video.currentTime!==time)await waitVideo(video,'seeked',()=>{video.currentTime=time});
+ else if(video.readyState<2)await waitVideo(video,'loadeddata',()=>{});
+ const pixels=frame(video);
+ return {pixels,detected:detect(pixels)};
+}
+async function scanVideoFrame(video,time){
+ const candidate=await readVideoFrame(video,time);
+ // Loose color and calibration matches are useful for manual capture, but insufficient for automatic video import.
+ if(cancel||!candidate.detected.tracks)return false;
+ const nextTime=time+.2;
+ if(nextTime<video.duration){
+  const next=await readVideoFrame(video,nextTime);
+  if(cancel)return false;
+  if(sameAppraisal(candidate.detected,next.detected))return addFrame(video,nextTime,next);
+ }
+ const previousTime=time-.2;
+ if(previousTime<0)return false;
+ const previous=await readVideoFrame(video,previousTime);
+ return !cancel&&sameAppraisal(candidate.detected,previous.detected)&&addFrame(video,time,candidate);
+}
 $('#stop').onclick=()=>{cancel=true;status('현재 프레임 처리 후 중지합니다. 저장된 카드는 유지됩니다.')};
-$('#capture').onclick=async()=>{if(busy)return;try{await addFrame($('#video'),$('#video').currentTime,true);status('현재 장면을 저장했습니다. 카드를 선택해 교정하세요.')}catch(e){status(e.message)}};
+$('#capture').onclick=async()=>{if(busy)return;try{await addFrame($('#video'),$('#video').currentTime);status('현재 장면을 저장했습니다. 카드를 선택해 교정하세요.')}catch(e){status(e.message)}};
 let queuedFiles=[];
-async function importFiles(files){if(busy||!files.length)return;if(!validTrainer()){queuedFiles=files;openSettings();return}busy=true;cancel=false;setInlineStatus('#collection-error','');syncCollection();status('파일을 읽는 중입니다…');$('#progress').removeAttribute('value');$('#files').disabled=true;$('#stop').hidden=false;$('#progress').hidden=false;let n=0;try{for(const file of files){if(cancel)break;if(file.type.startsWith('image/')||/\.(png|jpe?g|webp|heic|heif)$/i.test(file.name)){const url=URL.createObjectURL(file);try{const img=await loadImage(url);await addFrame(img,0,true);n++}finally{URL.revokeObjectURL(url)}continue}if(!file.type.startsWith('video/')&&!/\.(mp4|mov|m4v)$/i.test(file.name)){status('영상 또는 이미지 파일만 선택하세요.');continue}if(file.size>1024**3)throw Error('영상은 1GB 이하로 나누어 선택하세요.');if(videoURL)URL.revokeObjectURL(videoURL);videoURL=URL.createObjectURL(file);const v=$('#video');await waitVideo(v,'loadedmetadata',()=>{v.src=videoURL;v.load()});$('#videoPanel').hidden=false;if(!Number.isFinite(v.duration)||v.duration>900)throw Error('MVP는 최대 15분 영상까지 지원합니다. 짧게 나누어 주세요.');v.pause();const step=1;for(let t=.05;t<v.duration&&!cancel;t+=step){await waitVideo(v,'seeked',()=>v.currentTime=Math.min(t,v.duration-.001));if(await addFrame(v,t))n++;$('#progress').value=t/v.duration;status(`${Math.floor(t)} / ${Math.floor(v.duration)}초 확인 / 새 카드 ${n}개 / 화면을 열어 두세요.`);await new Promise(r=>setTimeout(r,0))}}status(cancel?'분석을 중지했습니다.':n?'':'조사 화면을 찾지 못했습니다. 스크린샷을 선택하거나 영상 미리보기에서 장면을 저장하세요.')}catch(e){status('');setInlineStatus('#collection-error',e.message)}finally{busy=false;syncCollection();$('#files').disabled=false;$('#files').value='';$('#stop').hidden=true;$('#progress').hidden=true}}
+async function importFiles(files){if(busy||!files.length)return;if(!validTrainer()){queuedFiles=files;openSettings();return}busy=true;cancel=false;setInlineStatus('#collection-error','');syncCollection();status('파일을 읽는 중입니다…');$('#progress').removeAttribute('value');$('#files').disabled=true;$('#stop').hidden=false;$('#progress').hidden=false;let n=0;try{for(const file of files){if(cancel)break;if(file.type.startsWith('image/')||/\.(png|jpe?g|webp|heic|heif)$/i.test(file.name)){const url=URL.createObjectURL(file);try{const img=await loadImage(url);await addFrame(img);n++}finally{URL.revokeObjectURL(url)}continue}if(!file.type.startsWith('video/')&&!/\.(mp4|mov|m4v)$/i.test(file.name)){status('영상 또는 이미지 파일만 선택하세요.');continue}if(file.size>1024**3)throw Error('영상은 1GB 이하로 나누어 선택하세요.');if(videoURL)URL.revokeObjectURL(videoURL);videoURL=URL.createObjectURL(file);const v=$('#video');await waitVideo(v,'loadedmetadata',()=>{v.src=videoURL;v.load()});$('#videoPanel').hidden=false;if(!Number.isFinite(v.duration)||v.duration>900)throw Error('MVP는 최대 15분 영상까지 지원합니다. 짧게 나누어 주세요.');v.pause();const step=1;for(let t=.05;t<v.duration&&!cancel;t+=step){if(await scanVideoFrame(v,t))n++;$('#progress').value=t/v.duration;status(`${Math.floor(t)} / ${Math.floor(v.duration)}초 확인 / 새 카드 ${n}개 / 화면을 열어 두세요.`);await new Promise(r=>setTimeout(r,0))}}status(cancel?'분석을 중지했습니다.':n?'':'조사 화면을 찾지 못했습니다. 스크린샷을 선택하거나 영상 미리보기에서 장면을 저장하세요.')}catch(e){status('');setInlineStatus('#collection-error',e.message)}finally{busy=false;syncCollection();$('#files').disabled=false;$('#files').value='';$('#stop').hidden=true;$('#progress').hidden=true}}
 $('#files').onchange=e=>importFiles([...e.target.files]);const drop=$('#drop');drop.ondragover=e=>{e.preventDefault();drop.classList.add('drag')};drop.ondragleave=()=>drop.classList.remove('drag');drop.ondrop=e=>{e.preventDefault();drop.classList.remove('drag');importFiles([...e.dataTransfer.files])};
 $('#demo').onclick=async()=>{if(!$('#trainer').value)$('#trainer').value=40;const cv=document.createElement('canvas');cv.width=390;cv.height=720;const c=cv.getContext('2d');c.fillStyle='#e9eee0';c.fillRect(0,0,390,720);c.fillStyle='#456347';c.font='20px sans-serif';c.fillText('CP1400',135,65);c.font='16px sans-serif';c.fillText('예제 / 마릴리',40,100);c.font='100px sans-serif';c.fillText('◎',145,240);c.fillStyle='#fffdf5';c.fillRect(28,350,334,300);c.fillStyle='#3e5c42';c.font='18px sans-serif';c.fillText('EXAMPLE / 0 / 15 / 15',48,390);['ATTACK','DEFENSE','HP'].forEach((t,i)=>{c.fillStyle='#50684a';c.font='12px sans-serif';c.fillText(t,48,428+i*60);c.fillStyle='#e3e5d9';c.fillRect(48,440+i*60,270,10);if(i){c.fillStyle='#ec9a48';c.fillRect(48,440+i*60,270,10)}});try{await save({id:crypto.randomUUID(),image:cv.toDataURL('image/jpeg'),demo:true,species:'azumarill',iv:[0,15,15],observed:{cp:1400},trainer:40,confirmed:true,confidence:'예제 데이터 / 실제 포켓몬 아님',time:0});setInlineStatus('#collection-error','');status('예제 카드를 추가했습니다. 선택하면 계산 결과를 볼 수 있습니다.')}catch(error){setInlineStatus('#collection-error',error.message)}};
 

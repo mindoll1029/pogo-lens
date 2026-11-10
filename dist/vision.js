@@ -42,7 +42,8 @@ function appraisalTracks({width:w,height:h,data}) {
    if(!c||a.colored+b.colored+c.colored<w*.02)continue;
    // Divider lines are inside the fill, so use its endpoint instead of counting colored pixels.
    const iv=[a,b,c].map(t=>Math.max(0,Math.round(15*(t.lastFill-t.start+1)/(t.end-t.start+1))));
-   return {candidate:true,iv,confidence:'조사 막대 자동 판독',tracks:true};
+    const bars=[a,b,c].map(t=>[t.start/w,t.end/w,t.y/h]);
+    return {candidate:true,iv,confidence:'조사 막대 자동 판독',tracks:true,bars};
   }
  }
  return null;
@@ -55,6 +56,11 @@ export function detect(image,calibration){const {width:w,height:h,data:d}=image;
 }
 export function signature(image){const {width:w,height:h,data}=image;const a=[];for(let y=1;y<17;y++)for(let x=1;x<10;x++){const i=(Math.floor(h*y/18)*w+Math.floor(w*x/11))*4;a.push(Math.round((data[i]+data[i+1]+data[i+2])/48))}return a;}
 export function distance(a,b){return a.reduce((n,x,i)=>n+Math.abs(x-b[i]),0)/a.length;}
+
+export function sameAppraisal(a,b){
+ return !!(a?.tracks&&b?.tracks&&a.iv.every((value,i)=>value===b.iv[i])&&
+  a.bars.every((bar,i)=>bar.every((position,j)=>Math.abs(position-b.bars[i][j])<(j===2?.005:.012))));
+}
 
 export function fullBarCorrection(iv,matches){
  const candidates=[iv];

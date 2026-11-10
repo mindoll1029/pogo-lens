@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import {detect,fullBarCorrection} from '../dist/vision.js';
+import {detect,fullBarCorrection,sameAppraisal} from '../dist/vision.js';
 import {readObservation,cpFromOverview} from '../dist/frame-ocr.js';
 import {inferLevel} from '../dist/observation.js';
 
@@ -42,10 +42,10 @@ test('Display the recognized family when form is uncertain, or resolve it from a
  assert.equal(nearby.verified,false);
 });
 
-test('An empty attack track does not block automatic IV and level recovery',()=>{
+function appraisalFrame(ivs,offsetY=0){
  const width=540,height=1120,data=new Uint8ClampedArray(width*height*4).fill(255);
- for(const [i,iv] of [0,15,15].entries()){
-  for(let y=690+i*66;y<703+i*66;y++){
+ for(const [i,iv] of ivs.entries()){
+  for(let y=690+i*66+offsetY;y<703+i*66+offsetY;y++){
    for(let x=65;x<307;x++){
     const divider=[144,145,146,147,225,226,227,228].includes(x);
     const rgb=divider?[255,255,255]:x-65<242*iv/15?[238,155,75]:[210,210,210];
@@ -53,10 +53,28 @@ test('An empty attack track does not block automatic IV and level recovery',()=>
    }
   }
  }
- const result=detect({width,height,data});
+ return {width,height,data};
+}
+
+test('An empty attack track does not block automatic IV and level recovery',()=>{
+ const result=detect(appraisalFrame([0,15,15]));
  assert.equal(result.tracks,true);
  assert.deepEqual(result.iv,[0,15,15]);
  const {pokemon,observed}=readObservation(db,'마 릴 리 ♀',result.iv,40,{cpText:'1,400'});
  assert.equal(pokemon.id,'azumarill');
  assert.equal(inferLevel(db,pokemon,result.iv,40,observed).level,40);
+});
+
+test('Video import requires matching complete appraisal bars across nearby frames',()=>{
+ const still=detect(appraisalFrame([0,15,15]));
+ const slightJitter=detect(appraisalFrame([0,15,15],2));
+ const sliding=detect(appraisalFrame([0,15,15],16));
+ const filling=detect(appraisalFrame([0,14,15]));
+ const partial=detect(appraisalFrame([15,15]),{x0:65/540,x1:307/540,ys:[696,762,828].map(y=>y/1120)});
+ assert.equal(partial.candidate,true);
+ assert.equal(sameAppraisal(still,slightJitter),true);
+ assert.equal(sameAppraisal(still,sliding),false);
+ assert.equal(sameAppraisal(still,filling),false);
+ assert.equal(sameAppraisal(still,partial),false);
+ assert.equal(sameAppraisal(still,null),false);
 });
