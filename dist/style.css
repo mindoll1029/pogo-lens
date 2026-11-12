@@ -477,18 +477,24 @@ body.dragging-cards { -webkit-user-select: none; user-select: none; cursor: grab
 @media (pointer: coarse) {
   .sort-control select { font-size: var(--text-md); }
 }
-/* Phone toolbar fits one row from 360px: the view modes show as icons (their names stay for screen readers)
-   and "카드 선택" reads "선택". Selection and order editing add buttons and may wrap to a second row. */
+/* Toolbar in two groups: how the list is shown (sort, view) and what to do with the cards (order editing,
+   selection). Wide screens keep both groups on one line; phones give each group its own row. */
+.action-row { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-xs); }
+@media (max-width: 760px) {
+  .sectionhead .actions { flex-direction: column; align-items: flex-start; gap: 6px; }
+}
+/* On phones the view modes show as icons (their names stay for screen readers). */
 .view-icon { display: none; width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 @media (max-width: 540px) {
-  .sectionhead .actions { gap: 6px; }
+  .sectionhead .action-row { gap: 6px; }
   .sort-control svg { left: 11px; }
   .sort-control::after { right: 12px; }
   .sort-control select { padding: 0 28px 0 36px; }
   .view-switch button { width: 44px; padding: 0; }
   .view-icon { display: block; }
-  .view-label, .narrow-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
-  #select-cards { padding-inline: var(--space-sm); }
+  .view-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  /* Selection mode's three buttons fit one row from 360px. */
+  .action-row + .action-row .quiet { padding-inline: var(--space-sm); }
 }
 
 /* Collection controls follow the scroll. Desktop: the one-row title bar sticks.

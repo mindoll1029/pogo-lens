@@ -44,16 +44,14 @@ function syncCollection(){
  $('#count').textContent=cards.length;
  $('#empty').hidden=cards.length>0;
  $('#select-cards').disabled=!cards.length||busy;
- // On phones the idle label shortens to "선택"; the hidden word keeps the accessible name "카드 선택".
- // The space is a no-break space: a flex item drops a trailing ordinary space.
- if(selectingCards)$('#select-cards').textContent='선택 취소';
- else{const word=document.createElement('span');word.className='narrow-hidden';word.textContent='카드 ';$('#select-cards').replaceChildren(word,'선택')}
+ $('#select-cards').textContent=selectingCards?'선택 취소':'카드 선택';
  $('#delete-selected').hidden=!selectingCards;
  $('#delete-selected').disabled=!selectedCards.size||busy;
  $('#delete-selected').textContent='선택 삭제 ('+selectedCards.size+')';
  $('#select-all').hidden=!selectingCards;
  $('#select-all').disabled=busy||!cards.length||cards.every(card=>selectedCards.has(card.id));
- $('#reorder-cards').hidden=sortMode!=='custom'||cards.length<2&&!reorderingCards;
+ // Order editing and selection don't run together; "순서 편집" steps aside while cards are being selected.
+ $('#reorder-cards').hidden=sortMode!=='custom'||selectingCards||cards.length<2&&!reorderingCards;
  $('#reorder-cards').disabled=busy;
  $('#reorder-cards').textContent=reorderingCards?'완료':'순서 편집';
  $('#reorder-cards').setAttribute('aria-pressed',String(reorderingCards));
