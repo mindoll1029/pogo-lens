@@ -87,9 +87,9 @@ dialog .danger, dialog .danger:not(:disabled):hover { color: var(--color-card-da
 .import:has(input:focus-visible) { outline: 3px solid var(--color-focus); outline-offset: 3px; }
 #count { font-variant-numeric: tabular-nums; margin-left: var(--space-xs); color: var(--color-muted); }
 .cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--gap-columns); }
-button.card { text-align: left; display: block; position: relative; min-width: 0; padding: 0; overflow: clip; color: var(--color-ink); background: var(--color-paper-2); border: 0; border-radius: var(--radius-card); }
-.card[aria-pressed="true"]::after,
-.card[aria-pressed="true"] .card-shot-crop::after { content: ''; position: absolute; inset: 0; border: 3px solid var(--color-focus); border-radius: inherit; pointer-events: none; }
+.card { text-align: left; display: block; position: relative; min-width: 0; padding: 0; overflow: clip; color: var(--color-ink); background: var(--color-paper-2); border: 0; border-radius: var(--radius-card); }
+.card.is-selected::after,
+.card.is-selected .card-shot-crop::after { content: ''; position: absolute; inset: 0; border: 3px solid var(--color-focus); border-radius: inherit; pointer-events: none; }
 #calhelp:empty { display: none; }
 .cardbody { display: grid; gap: var(--space-sm); padding: var(--space-sm) var(--space-md); }
 .cardheading { display: flex; align-items: baseline; flex-wrap: wrap; gap: 0 var(--space-sm); min-width: 0; }
@@ -216,7 +216,7 @@ th { font-weight: 700; }
 }
 @media (max-width: 540px) {
   .cards { grid-template-columns: minmax(0, 1fr); }
-  button.card { display: grid; grid-template-columns: minmax(0, .6fr) minmax(0, 1.4fr); position: relative; }
+  .card { display: grid; grid-template-columns: minmax(0, .6fr) minmax(0, 1.4fr); position: relative; }
   .cardbody { grid-column: 2; }
   .cardbody { padding-inline: var(--space-xs); }
   .cardpreviews .league-badge { gap: var(--space-2xs); padding-inline: var(--space-2xs); }
@@ -241,7 +241,7 @@ th { font-weight: 700; }
 .view-switch { display:flex; gap:0.2rem; }
 .view-switch button[aria-pressed="true"] { background:var(--color-ink); color:var(--color-paper); }
 .cards.list-view { grid-template-columns:minmax(0,1fr); }
-.cards.list-view button.card { display:grid; grid-template-columns:clamp(5rem, 14vw, 7rem) minmax(0,1fr); align-items:start; }
+.cards.list-view .card { display:grid; grid-template-columns:clamp(5rem, 14vw, 7rem) minmax(0,1fr); align-items:start; }
 .cards.list-view .cardbody { grid-template-columns:minmax(0,1fr) auto; align-self:center; align-items:baseline; }
 .cards.list-view .ivline { border:0; padding:0; gap:var(--space-sm); justify-content:flex-end; }
 .cards.list-view .cardpreviews { grid-column:1/-1; }
@@ -477,3 +477,11 @@ body.dragging-cards { -webkit-user-select: none; user-select: none; cursor: grab
   .sectionhead .actions::before { content: ""; }
   .collection.is-stuck .sectionhead .actions::before { box-shadow: 0 12px 20px -16px oklch(12% 0.05 160 / 0.9); }
 }
+
+/* Card: an article whose heading button stretches over the whole card. The ring is drawn on the card. */
+#cards .card-open { display: inline; min-height: 0; padding: 0; border: 0; border-radius: 0; background: none; color: inherit; font: inherit; letter-spacing: inherit; text-align: inherit; cursor: pointer; }
+#cards .card-open::after { content: ""; position: absolute; inset: 0; z-index: 1; border-radius: inherit; }
+#cards .card-open:focus-visible { outline: none; }
+#cards .card:has(.card-open:focus-visible) { outline: 3px solid var(--color-focus); outline-offset: 3px; }
+#cards .card-open:active { transform: none; }
+.cards.reordering .card-open { cursor: default; }

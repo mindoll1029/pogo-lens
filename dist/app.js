@@ -6,7 +6,13 @@ import {renderResults,leagueBadge} from './result-view.js';
 import {legalMoves,trainerCap,inferLevel,recognizeCP,digitTemplates} from './observation.js';
 import {createConverter} from './video-convert.js';
 const $=s=>document.querySelector(s), el=(tag,cls,text)=>{const n=document.createElement(tag);if(cls)n.className=cls;if(text!==undefined)n.textContent=text;return n};
-const db=await fetch('data.json').then(r=>{if(!r.ok)throw Error('DB 로드 실패');return r.json()});
+const db=await fetch('data.json').then(r=>{if(!r.ok)throw Error('DB 로드 실패');return r.json()}).catch(error=>{showStartupError();throw error});
+// Without the Pokémon data nothing else can run; say so and offer a reload instead of a page that silently ignores input.
+function showStartupError(){
+ const field=$('#status');field.hidden=false;field.textContent='포켓몬 데이터를 불러오지 못했습니다. 인터넷 연결을 확인한 뒤 새로고침하세요.';
+ for(const id of ['files','demo','select-cards','sort-cards'])if($('#'+id))$('#'+id).disabled=true;
+ if(!$('#startup-retry')){const retry=el('button',null,'새로고침');retry.id='startup-retry';retry.type='button';retry.onclick=()=>location.reload();field.after(retry)}
+}
 const storage=await new Promise((resolve,reject)=>{const r=indexedDB.open('go-lens-private',1);r.onupgradeneeded=()=>r.result.createObjectStore('cards',{keyPath:'id'});r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error)}).catch(()=>null);
 let editCalSnapshot=null;
 let collectionView='grid';try{collectionView=localStorage.getItem('go-lens-view')==='list'?'list':'grid'}catch{}
@@ -110,21 +116,26 @@ function render(){
 function cardName(c){return db.pokemon.find(p=>p.id===c.species)?.name||(c.recognizedName?c.recognizedName+' · 폼 확인 필요':'포켓몬 미확인')}
 function renderCard(c){
  const slot=el('div','card-slot');slot.dataset.id=c.id;
- const b=el('button','card');b.type='button';
+ // The card is an article with a real heading; the button inside the heading stretches over the whole card
+ // (.card-open::after), so headings stay navigable and the button's name is the Pokémon's name.
+ const b=el('article','card');
  const crop=el('div','card-shot-crop'),img=el('img','card-shot');
  img.loading='lazy';img.decoding='async';
  img.alt=c.demo?'예제 조사 화면':`조사 화면 ${c.time?.toFixed(1)||0}초`;
  img.onload=()=>crop.style.setProperty('--shot-ratio',img.naturalWidth/img.naturalHeight);
  img.src=c.image;
  crop.append(img);b.append(crop);
- const body=el('div','cardbody'),heading=el('div','cardheading');
- heading.append(el('h3',null,cardName(c)));
- if(c.observed?.cp)heading.append(el('p','card-cp','CP '+c.observed.cp));
+ const body=el('div','cardbody'),heading=el('div','cardheading'),title=el('h3'),openButton=el('button','card-open',cardName(c));
+ openButton.type='button';title.append(openButton);heading.append(title);
+ const described=[];
+ if(c.observed?.cp){const cp=el('p','card-cp','CP '+c.observed.cp);cp.id='cp-'+c.id;described.push(cp.id);heading.append(cp)}
  body.append(heading);
- const line=el('div','ivline');
+ const line=el('div','ivline');line.id='iv-'+c.id;described.push(line.id);
+ openButton.setAttribute('aria-describedby',described.join(' '));
  if(c.iv?.every(Number.isInteger)){
   const percent=c.iv.reduce((sum,value)=>sum+value,0)/45*100;
-  line.append(el('strong',null,c.iv.join(' / ')),el('small',null,percent.toFixed(1)+'% IV'));
+  // The space keeps "14" and "80.0%" apart when screen readers join the text (flex hides it visually).
+  line.append(el('strong',null,c.iv.join(' / ')),' ',el('small',null,percent.toFixed(1)+'% IV'));
  }else line.append(el('strong',null,'IV 확인 필요'));
  body.append(line);
  const visiblePreviews=c.preview?.filter(x=>!c.observed?.cp||c.observed.cp<=x.cap);
@@ -136,14 +147,15 @@ function renderCard(c){
   body.append(badges);
  }
  b.append(body);
- if(selectingCards)b.setAttribute('aria-pressed',String(selectedCards.has(c.id)));
- if(reorderingCards)b.tabIndex=-1;
- b.onclick=()=>{
+ const markSelected=()=>{const on=selectedCards.has(c.id);openButton.setAttribute('aria-pressed',String(on));b.classList.toggle('is-selected',on)};
+ if(selectingCards)markSelected();
+ if(reorderingCards)openButton.tabIndex=-1;
+ openButton.onclick=()=>{
   if(reorderingCards)return;
   if(!selectingCards){open(c);return}
   if(selectedCards.has(c.id))selectedCards.delete(c.id);
   else selectedCards.add(c.id);
-  b.setAttribute('aria-pressed',String(selectedCards.has(c.id)));
+  markSelected();
   syncCollection();
  };
  slot.append(b);
@@ -190,11 +202,16 @@ function autoScroll(){
 // and listen on window instead.
 function onDragMove(e){if(!drag||e.pointerId!==drag.pointerId)return;drag.x=e.clientX;drag.y=e.clientY;reorderAtPointer();followPointer()}
 function onDragEnd(e){if(drag&&e.pointerId===drag.pointerId)endDrag()}
+// An interrupted drag (browser takes the gesture, window loses focus, Escape) restores the order from before it.
+function onDragCancel(e){if(drag&&(e.type!=='pointercancel'||e.pointerId===drag.pointerId))cancelDrag()}
+function onDragKey(e){if(e.key==='Escape'&&drag){e.preventDefault();cancelDrag()}}
 function stopDragTracking(){
  cancelAnimationFrame(drag.frame);
  window.removeEventListener('pointermove',onDragMove);
  window.removeEventListener('pointerup',onDragEnd);
- window.removeEventListener('pointercancel',onDragEnd);
+ window.removeEventListener('pointercancel',onDragCancel);
+ window.removeEventListener('blur',onDragCancel);
+ window.removeEventListener('keydown',onDragKey);
  try{$('#cards').releasePointerCapture(drag.pointerId)}catch{}
 }
 function endDrag(){
@@ -206,6 +223,14 @@ function endDrag(){
  else{const from=slot.style.transform;slot.style.transform='';slot.animate([{transform:from},{transform:'none'}],{duration:180,easing:'cubic-bezier(0.16, 1, 0.3, 1)'})}
  commitOrder();announceOrder(slot);
 }
+function cancelDrag(){
+ if(!drag)return;
+ stopDragTracking();
+ const {slot,order}=drag;drag=null;
+ $('#cards').append(...order.filter(node=>node.isConnected));
+ slot.classList.remove('dragging');document.body.classList.remove('dragging-cards');slot.style.transform='';
+ $('#order-status').textContent='순서 변경을 취소했습니다.';
+}
 function reorderHandle(c){
  const handle=el('button','card-handle');
  handle.type='button';handle.innerHTML=gripIcon;
@@ -214,11 +239,13 @@ function reorderHandle(c){
   if(e.button>0||drag)return;
   e.preventDefault();
   const slot=handle.closest('.card-slot'),rect=slot.getBoundingClientRect();
-  drag={slot,pointerId:e.pointerId,x:e.clientX,y:e.clientY,grabX:e.clientX-rect.left,grabY:e.clientY-rect.top,frame:0};
+  drag={slot,pointerId:e.pointerId,x:e.clientX,y:e.clientY,grabX:e.clientX-rect.left,grabY:e.clientY-rect.top,frame:0,order:[...$('#cards').children]};
   try{$('#cards').setPointerCapture(e.pointerId)}catch{}
   window.addEventListener('pointermove',onDragMove);
   window.addEventListener('pointerup',onDragEnd);
-  window.addEventListener('pointercancel',onDragEnd);
+  window.addEventListener('pointercancel',onDragCancel);
+  window.addEventListener('blur',onDragCancel);
+  window.addEventListener('keydown',onDragKey);
   slot.classList.add('dragging');document.body.classList.add('dragging-cards');
   followPointer();
   drag.frame=requestAnimationFrame(autoScroll);
