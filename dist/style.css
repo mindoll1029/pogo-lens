@@ -485,3 +485,7 @@ body.dragging-cards { -webkit-user-select: none; user-select: none; cursor: grab
 #cards .card:has(.card-open:focus-visible) { outline: 3px solid var(--color-focus); outline-offset: 3px; }
 #cards .card-open:active { transform: none; }
 .cards.reordering .card-open { cursor: default; }
+
+/* A stored thumbnail is already cropped to the card window; show it as is. */
+.card-shot-crop.is-thumb { aspect-ratio: auto; }
+.card-shot-crop.is-thumb .card-shot { transform: none; }

@@ -89,9 +89,13 @@ function setSortMode(mode){
  if(mode==='custom'&&!customOrder.length)saveCustomOrder([...$('#cards').children].map(n=>n.dataset.id));
  sortMode=mode;
  try{localStorage.setItem('go-lens-sort',mode)}catch{}
+ // Only leaving order editing changes the cards themselves (their handles); a plain sort just moves the
+ // existing nodes, so images are not rebuilt or decoded again.
+ const leavingReorder=mode!=='custom'&&reorderingCards;
  if(mode!=='custom')reorderingCards=false;
  $('#sort-cards').value=mode;
- render();
+ if(leavingReorder)render();
+ else{arrangeCards();syncCollection()}
 }
 $('#sort-cards').value=sortMode;
 $('#sort-cards').onchange=e=>setSortMode(e.target.value);
@@ -123,7 +127,8 @@ function renderCard(c){
  img.loading='lazy';img.decoding='async';
  img.alt=c.demo?'예제 조사 화면':`조사 화면 ${c.time?.toFixed(1)||0}초`;
  img.onload=()=>crop.style.setProperty('--shot-ratio',img.naturalWidth/img.naturalHeight);
- img.src=c.image;
+ img.src=c.thumb||c.image;
+ if(c.thumb)crop.classList.add('is-thumb');
  crop.append(img);b.append(crop);
  const body=el('div','cardbody'),heading=el('div','cardheading'),title=el('h3'),openButton=el('button','card-open',cardName(c));
  openButton.type='button';title.append(openButton);heading.append(title);
@@ -437,8 +442,8 @@ async function addFrame(source,time=0,stableFrame,scene,alternates){
   const glance=species&&await recognizeFrame(canvas,db,iv,trainer,{species,cpOnly:true,glance:true}).catch(()=>null);
   if(!glance?.observed?.cp||glance.observed.cp===continuing.observed.cp){scene.last={detected,card:continuing};return false}
  }
- const image=canvas.toDataURL('image/jpeg',.84);
- const card={id:crypto.randomUUID(),createdAt:Date.now(),image,time,iv,confidence:detected.confidence||'조사 화면을 확인하세요.',sig,confirmed:false};
+ const image=canvas.toDataURL('image/jpeg',.84),thumb=makeThumb(canvas);
+ const card={id:crypto.randomUUID(),createdAt:Date.now(),image,thumb,time,iv,confidence:detected.confidence||'조사 화면을 확인하세요.',sig,confirmed:false};
  try{
   const {pokemon,name,observed,verified}=await readCardFromFrames(iv,trainer,detected,alternates);
   if(name)card.recognizedName=name;
@@ -589,7 +594,7 @@ $('#capture').onclick=async()=>{if(busy)return;try{await addFrame($('#video'),vi
 let queuedFiles=[];
 async function importFiles(files){if(busy||!files.length)return;if(!validTrainer()){queuedFiles=files;openSettings();return}if(reorderingCards){endDrag();setReordering(false)}busy=true;cancel=false;setInlineStatus('#collection-error','');syncCollection();status('파일을 읽는 중입니다…');$('#progress').removeAttribute('value');$('#files').disabled=true;$('#stop').hidden=false;$('#progress').hidden=false;let n=0;try{for(const file of files){if(cancel)break;if(file.type.startsWith('image/')||/\.(png|jpe?g|webp|heic|heif)$/i.test(file.name)){const url=URL.createObjectURL(file);try{void prepareFrameReader().catch(()=>{});const img=await loadImage(url);await addFrame(img);n++}finally{URL.revokeObjectURL(url)}continue}if(!file.type.startsWith('video/')&&!/\.(mp4|mov|m4v)$/i.test(file.name)){status('영상 또는 이미지 파일만 선택하세요.');continue}if(file.size>1024**3)throw Error('영상은 1GB 이하로 나누어 선택하세요.');const v=$('#video'),scene={last:null},native=await tryNativeVideo(v,file);if(native.ok){if(!Number.isFinite(v.duration)||v.duration>maxVideoSeconds)throw tooLong();videoOffset=0;showVideoPanel('영상 미리보기');void prepareFrameReader().catch(()=>{});const before=n;n+=await scanLoadedVideo(v,{scene,report:(t,found)=>{$('#progress').value=t/v.duration;status(`${Math.floor(t)} / ${Math.floor(v.duration)}초 확인 / 새 카드 ${before+found}개 / 화면을 열어 두세요.`)}})}else n+=await convertAndScan(v,file,native.duration,scene,n)}status(cancel?'분석을 중지했습니다.':n?'':'조사 화면을 찾지 못했습니다. 스크린샷을 선택하거나 영상 미리보기에서 장면을 저장하세요.')}catch(e){if(e?.name==='AbortError'||cancel)status('분석을 중지했습니다.');else{status('');setInlineStatus('#collection-error',e.message)}}finally{busy=false;syncCollection();$('#files').disabled=false;$('#files').value='';$('#stop').hidden=true;$('#progress').hidden=true}}
 $('#files').onchange=e=>importFiles([...e.target.files]);const drop=$('#drop');drop.ondragover=e=>{e.preventDefault();drop.classList.add('drag')};drop.ondragleave=()=>drop.classList.remove('drag');drop.ondrop=e=>{e.preventDefault();drop.classList.remove('drag');importFiles([...e.dataTransfer.files])};
-$('#demo').onclick=async()=>{if(!$('#trainer').value)$('#trainer').value=40;const cv=document.createElement('canvas');cv.width=390;cv.height=720;const c=cv.getContext('2d');c.fillStyle='#e9eee0';c.fillRect(0,0,390,720);c.fillStyle='#456347';c.font='20px sans-serif';c.fillText('CP1400',135,65);c.font='16px sans-serif';c.fillText('예제 / 마릴리',40,100);c.font='100px sans-serif';c.fillText('◎',145,240);c.fillStyle='#fffdf5';c.fillRect(28,350,334,300);c.fillStyle='#3e5c42';c.font='18px sans-serif';c.fillText('EXAMPLE / 0 / 15 / 15',48,390);['ATTACK','DEFENSE','HP'].forEach((t,i)=>{c.fillStyle='#50684a';c.font='12px sans-serif';c.fillText(t,48,428+i*60);c.fillStyle='#e3e5d9';c.fillRect(48,440+i*60,270,10);if(i){c.fillStyle='#ec9a48';c.fillRect(48,440+i*60,270,10)}});try{await save({id:crypto.randomUUID(),createdAt:Date.now(),image:cv.toDataURL('image/jpeg'),demo:true,species:'azumarill',iv:[0,15,15],observed:{cp:1400},trainer:40,confirmed:true,confidence:'예제 데이터 / 실제 포켓몬 아님',time:0});setInlineStatus('#collection-error','');status('예제 카드를 추가했습니다. 선택하면 계산 결과를 볼 수 있습니다.')}catch(error){setInlineStatus('#collection-error',error.message)}};
+$('#demo').onclick=async()=>{if(!$('#trainer').value)$('#trainer').value=40;const cv=document.createElement('canvas');cv.width=390;cv.height=720;const c=cv.getContext('2d');c.fillStyle='#e9eee0';c.fillRect(0,0,390,720);c.fillStyle='#456347';c.font='20px sans-serif';c.fillText('CP1400',135,65);c.font='16px sans-serif';c.fillText('예제 / 마릴리',40,100);c.font='100px sans-serif';c.fillText('◎',145,240);c.fillStyle='#fffdf5';c.fillRect(28,350,334,300);c.fillStyle='#3e5c42';c.font='18px sans-serif';c.fillText('EXAMPLE / 0 / 15 / 15',48,390);['ATTACK','DEFENSE','HP'].forEach((t,i)=>{c.fillStyle='#50684a';c.font='12px sans-serif';c.fillText(t,48,428+i*60);c.fillStyle='#e3e5d9';c.fillRect(48,440+i*60,270,10);if(i){c.fillStyle='#ec9a48';c.fillRect(48,440+i*60,270,10)}});try{await save({id:crypto.randomUUID(),createdAt:Date.now(),image:cv.toDataURL('image/jpeg'),thumb:makeThumb(cv),demo:true,species:'azumarill',iv:[0,15,15],observed:{cp:1400},trainer:40,confirmed:true,confidence:'예제 데이터 / 실제 포켓몬 아님',time:0});setInlineStatus('#collection-error','');status('예제 카드를 추가했습니다. 선택하면 계산 결과를 볼 수 있습니다.')}catch(error){setInlineStatus('#collection-error',error.message)}};
 
 
 $('.editor').addEventListener('input',e=>{if(!editing)return;editRevision++;if(!e.target.closest('#results'))$('#results').replaceChildren()});
@@ -801,7 +806,36 @@ async function refreshCardPreviews(){
   }catch{/* keep the old badge; it is recalculated when the card is edited */}
  }
 }
-void refreshCardPreviews();
+// List thumbnail: the same CP-to-HP window the card shows (4.5%-50% of the screenshot height), 480 px wide.
+// The list then decodes ~0.9 MB per card instead of a full 720x1560 screenshot (~4.5 MB).
+function makeThumb(source){
+ const w=source.naturalWidth||source.width,h=source.naturalHeight||source.height;
+ const top=h*.045,height=h*.455,width=Math.min(480,w),out=document.createElement('canvas');
+ out.width=width;out.height=Math.round(height*width/w);
+ out.getContext('2d').drawImage(source,0,top,w,height,0,0,out.width,out.height);
+ return out.toDataURL('image/jpeg',.8);
+}
+async function decodeImage(src){
+ if(!window.createImageBitmap)return loadImage(src);
+ return createImageBitmap(await (await fetch(src)).blob());
+}
+// Cards saved before thumbnails existed get one in the background, one at a time.
+async function refreshThumbnails(){
+ for(const id of cards.filter(c=>!c.thumb&&c.image).map(c=>c.id)){
+  const card=cards.find(c=>c.id===id);
+  if(!card||card.thumb)continue;
+  // Wait for an idle moment, and decode off the main thread where the browser can.
+  await new Promise(r=>(window.requestIdleCallback||setTimeout)(r));
+  try{
+   const source=await decodeImage(card.image);
+   const thumb=makeThumb(source);
+   source.close?.();
+   if(cards.find(c=>c.id===id)!==card)continue; // edited meanwhile; the next visit retries
+   await save({...card,thumb});
+  }catch{/* keep the full image in the list */}
+ }
+}
+void refreshCardPreviews().then(refreshThumbnails);
 
 // Shadow under the collection controls only while they are stuck to the top of the screen.
 let stuckFrame=0;
