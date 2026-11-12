@@ -42,6 +42,8 @@ function syncCollection(){
  $('#delete-selected').hidden=!selectingCards;
  $('#delete-selected').disabled=!selectedCards.size||busy;
  $('#delete-selected').textContent='선택 삭제 ('+selectedCards.size+')';
+ $('#delete-all').hidden=!selectingCards;
+ $('#delete-all').disabled=!cards.length||busy;
  $('#reorder-cards').hidden=sortMode!=='custom'||cards.length<2&&!reorderingCards;
  $('#reorder-cards').disabled=busy;
  $('#reorder-cards').textContent=reorderingCards?'완료':'순서 편집';
@@ -300,6 +302,20 @@ $('#select-cards').onclick=()=>{
  selectedCards.clear();
  if(selectingCards)reorderingCards=false;
  render();
+};
+// Deletes every card and screenshot on this device after confirmation. Lives in selection mode with "선택 삭제".
+$('#delete-all').onclick=async()=>{
+ if(busy||!cards.length)return;
+ if(!confirm('카드 '+cards.length+'개와 스크린샷을 모두 삭제할까요? 삭제하면 되돌릴 수 없습니다.'))return;
+ try{await transaction('readwrite',store=>store.clear())}
+ catch{setInlineStatus('#collection-error','카드를 모두 삭제하지 못했습니다. 다시 시도하세요.');return}
+ setInlineStatus('#collection-error','');
+ cards=[];
+ selectedCards.clear();
+ selectingCards=false;
+ saveCustomOrder([]);
+ render();
+ status('카드를 모두 삭제했습니다.');
 };
 $('#delete-selected').onclick=async()=>{
  if(busy||!selectedCards.size)return;
