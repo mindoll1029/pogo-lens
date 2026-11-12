@@ -20,6 +20,15 @@
   --display-weight: 800; --tracking-display: -0.025em;
   --text-display: 2.5rem; --text-section: 1.728rem; --text-title: 1.2rem;
   --radius-card: 24px; --radius-control: 12px;
+  /* Pokémon type fills for white text and glyphs: each keeps its type hue, with lightness lowered only as far as
+     needed for at least 4.6:1 against --type-ink (fighting, dragon and dark already passed and are unchanged). */
+  --type-ink: oklch(99% 0 0);
+  --type-normal: oklch(55.5% 0.016 244.8); --type-fire: oklch(57.1% 0.162 45.1); --type-water: oklch(55.4% 0.116 248.1);
+  --type-electric: oklch(55.5% 0.112 94.6); --type-grass: oklch(54.2% 0.134 146.2); --type-ice: oklch(54.6% 0.080 189.1);
+  --type-fighting: oklch(56.1% 0.138 15.8); --type-poison: oklch(57.2% 0.143 317.5); --type-ground: oklch(56.4% 0.102 51.2);
+  --type-flying: oklch(55.7% 0.081 266.2); --type-psychic: oklch(57.4% 0.144 10.9); --type-bug: oklch(54.9% 0.126 117.5);
+  --type-rock: oklch(55.5% 0.063 91.4); --type-ghost: oklch(56.0% 0.096 273.8); --type-dragon: oklch(55.2% 0.118 263.2);
+  --type-dark: oklch(49.9% 0.025 288.3); --type-steel: oklch(55.0% 0.062 217.5); --type-fairy: oklch(57.0% 0.118 333.0);
 }
 html, body { overflow-x: clip; }
 body { font-synthesis: none; font-weight: 500; }
@@ -239,7 +248,7 @@ th { font-weight: 700; }
 .move-select { display:flex; align-items:center; gap:0.5rem; }
 .move-select select { min-width:0; flex:1; }
 .move-select > span:empty { display:none; }
-.move-type-icon { display:inline-flex; width:1.45rem; height:1.45rem; border-radius:50%; color:#fff; align-items:center; justify-content:center; font-size:1rem; vertical-align:middle; flex-shrink:0; }
+.move-type-icon { display:inline-flex; width:1.45rem; height:1.45rem; border-radius:50%; background-color:var(--type); color:var(--type-ink); align-items:center; justify-content:center; font-size:1rem; vertical-align:middle; flex-shrink:0; }
 .move-name { display:inline-flex; align-items:center; gap:0.35rem; }
 .charged-fields { min-width:0; display:grid; gap:0.75rem; }
 @media (max-width:600px) {
@@ -341,7 +350,7 @@ th { font-weight: 700; }
 
 .move-pills { display: flex; flex-wrap: wrap; justify-content: center; gap: var(--space-xs); margin-top: var(--space-lg); }
 #detail.editing .move-pills { display: none; }
-#detail .move-pill { min-height: 44px; padding: var(--space-xs) 18px; border: 0; border-radius: 10px; background: color-mix(in oklab, var(--type, var(--tone-dark)) 78%, black); color: oklch(99% 0 0); font-size: var(--text-md); font-weight: 700; line-height: 1.25; }
+#detail .move-pill { min-height: 44px; padding: var(--space-xs) 18px; border: 0; border-radius: 10px; background: var(--type, var(--tone-dark)); color: var(--type-ink); font-size: var(--text-md); font-weight: 700; line-height: 1.25; }
 #detail .move-pill.pending { background: var(--color-transparent); color: var(--sheet-ink); border: 2px dashed var(--sheet-rule); }
 #detail .tier-pill { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding: var(--space-2xs) var(--space-sm) var(--space-2xs) 10px; border: 3px solid var(--tier-line); border-radius: 10px; background: var(--sheet); color: var(--tier-line); font-size: 1.15rem; font-weight: 800; line-height: 1; }
 #detail .tier-pill svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
