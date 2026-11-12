@@ -28,18 +28,32 @@ test('CP comes from the number in its crop even when the prefix was misread',()=
 });
 
 test('Display the recognized family when form is uncertain, or resolve it from appearance',()=>{
- const text='다크펫';
- const undecided=readObservation(db,text,[7,14,14],40,{cpText:'cr1998'});
- assert.equal(undecided.name,'다크펫');
+ const text='랜드로스';
+ const undecided=readObservation(db,text,[14,14,15],40,{});
+ assert.equal(undecided.name,'랜드로스');
  assert.equal(undecided.pokemon,null);
- assert.equal(undecided.observed.cp,1998);
  const appearance={pixels:[26,82,27]};
- const references=[{species:'banette',pixels:[26,82,27]},{species:'banette_mega',pixels:[100,20,170]}];
- const result=readObservation(db,text,[7,14,14],40,{cpText:'cr1998',appearance,references});
- assert.equal(result.pokemon.id,'banette');
- const nearby=readObservation(db,text+'\n132/132HP',[7,14,14],40,{cpText:'cr1998'});
+ const references=[{species:'landorus_incarnate',pixels:[26,82,27]},{species:'landorus_therian',pixels:[100,20,170]}];
+ const result=readObservation(db,text,[14,14,15],40,{appearance,references});
+ assert.equal(result.pokemon.id,'landorus_incarnate');
+});
+
+test('Mega forms are candidates only when the screen names them or CP and HP require them',()=>{
+ // No "메가" on screen: the everyday form, even when the IV read is off by one.
+ const plain=readObservation(db,'다크펫',[7,15,15],40,{});
+ assert.equal(plain.pokemon.id,'banette');
+ const nearby=readObservation(db,'다크펫\n132/132HP',[7,14,14],40,{cpText:'cr1998'});
  assert.equal(nearby.pokemon.id,'banette');
  assert.equal(nearby.verified,false);
+ assert.equal(readObservation(db,'다크펫\n132/132HP',[7,15,15],40,{cpText:'1998'}).verified,true);
+ // The screen names the mega form.
+ assert.equal(readObservation(db,'메가다크펫',[7,15,15],40,{}).pokemon.id,'banette_mega');
+ assert.equal(readObservation(db,'메가 다크펫\n129/129HP',[7,15,15],40,{cpText:'3005'}).pokemon.id,'banette_mega');
+ // Mega-only CP and HP still resolve to the mega form without the word; CP alone does not.
+ assert.equal(readObservation(db,'다크펫\n129/129HP',[7,15,15],40,{cpText:'3005'}).pokemon.id,'banette_mega');
+ assert.equal(readObservation(db,'다크펫',[7,15,15],40,{cpText:'3005'}).pokemon.id,'banette');
+ // Primal reversion is treated the same way.
+ assert.equal(readObservation(db,'가이오가',[15,15,15],40,{}).pokemon.id,'kyogre');
 });
 
 function appraisalFrame(ivs,offsetY=0){

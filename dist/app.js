@@ -1,9 +1,10 @@
-import {typeIcon} from './move-types.js';
+import {typeIcon,typeColor,typeName} from './move-types.js';
 import {detect,signature,distance,sameAppraisal,sameVideoPokemon,fullBarCorrection} from './vision.js';
 import {applyGrowth,resetGrowth,evolutionTargets} from './growth.js';
 import {recognizeFrame,formAppearance,prepareFrameReader} from './frame-ocr.js';
 import {renderResults,leagueBadge} from './result-view.js';
 import {legalMoves,trainerCap,inferLevel,recognizeCP,digitTemplates} from './observation.js';
+import {createConverter} from './video-convert.js';
 const $=s=>document.querySelector(s), el=(tag,cls,text)=>{const n=document.createElement(tag);if(cls)n.className=cls;if(text!==undefined)n.textContent=text;return n};
 const db=await fetch('data.json').then(r=>{if(!r.ok)throw Error('DB 로드 실패');return r.json()});
 const storage=await new Promise((resolve,reject)=>{const r=indexedDB.open('go-lens-private',1);r.onupgradeneeded=()=>r.result.createObjectStore('cards',{keyPath:'id'});r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error)}).catch(()=>null);
@@ -11,7 +12,7 @@ let editCalSnapshot=null;
 let collectionView='grid';try{collectionView=localStorage.getItem('go-lens-view')==='list'?'list':'grid'}catch{}
 function setCollectionView(view){collectionView=view;$('#cards').classList.toggle('list-view',view==='list');for(const mode of ['grid','list'])$('#'+mode+'-view').setAttribute('aria-pressed',String(mode===view));try{localStorage.setItem('go-lens-view',view)}catch{}}
 $('#grid-view').onclick=()=>setCollectionView('grid');$('#list-view').onclick=()=>setCollectionView('list');setCollectionView(collectionView);
-function updateMoveTypes(){for(const id of ['fast','charged','charged2']){const field=$('#'+id),move=db.moves[field.value];field.dataset.previous=field.value;$('#'+id+'-type').replaceChildren(...(move?[typeIcon(move.type)]:[]));}}
+function updateMoveTypes(){for(const id of ['fast','charged','charged2']){const field=$('#'+id),move=db.moves[field.value];field.dataset.previous=field.value;$('#'+id+'-type').replaceChildren(...(move?[typeIcon(move.type)]:[]));}renderMovePills()}
 
 let editing=false,saving=false,editRevision=0;
 let cards=[],selected=null,cancel=false,busy=false,videoURL=null,cal=null,calpoints=null,job=0;
@@ -23,17 +24,12 @@ async function transaction(mode,fn){if(!storage)throw Error('기기 저장소를
 async function save(card){
  try{await transaction('readwrite',s=>s.put(card));}
  catch(error){throw Error('카드를 기기에 저장하지 못했습니다. 저장 공간을 확인한 뒤 다시 시도하세요.',{cause:error});}
- const i=cards.findIndex(x=>x.id===card.id),root=$('#cards');
- const item=renderCard(card);
- if(i<0){
-  cards.push(card);
-  root.prepend(item);
- }else{
-  cards[i]=card;
-  const current=root.children[cards.length-1-i];
-  current.replaceChildren(...item.childNodes);
-  current.onclick=item.onclick;
- }
+ const i=cards.findIndex(x=>x.id===card.id);
+ if(i<0)cards.push(card);else cards[i]=card;
+ const item=renderCard(card),current=cardNodes.get(card.id);
+ if(current)current.replaceChildren(...item.childNodes);
+ else{cardNodes.set(card.id,item);$('#cards').append(item)}
+ arrangeCards();
  syncCollection();
  }
 const selectedCards=new Set();
@@ -46,12 +42,72 @@ function syncCollection(){
  $('#delete-selected').hidden=!selectingCards;
  $('#delete-selected').disabled=!selectedCards.size||busy;
  $('#delete-selected').textContent='선택 삭제 ('+selectedCards.size+')';
+ $('#reorder-cards').hidden=sortMode!=='custom'||cards.length<2&&!reorderingCards;
+ $('#reorder-cards').disabled=busy;
+ $('#reorder-cards').textContent=reorderingCards?'완료':'순서 편집';
+ $('#reorder-cards').setAttribute('aria-pressed',String(reorderingCards));
+ $('#reorder-help').hidden=!reorderingCards;
+ $('#cards').classList.toggle('reordering',reorderingCards);
+}
+
+// Card order. Cards saved before this version have no createdAt and sort as the oldest.
+const sortLabels={cp:'CP순',dex:'#(번호) 순',newest:'최신 추가 순',oldest:'오래된 순',custom:'사용자 지정'};
+let sortMode='newest',customOrder=[],reorderingCards=false;
+try{const saved=localStorage.getItem('go-lens-sort');if(saved in sortLabels)sortMode=saved}catch{}
+try{const saved=JSON.parse(localStorage.getItem('go-lens-order')||'[]');if(Array.isArray(saved))customOrder=saved.map(String)}catch{}
+let customRank=new Map(customOrder.map((id,i)=>[id,i]));
+const cardNodes=new Map();
+const PREVIEW_VERSION=2;
+const speciesIndex=new Map(db.pokemon.map((p,i)=>[p.id,i]));
+const added=c=>Number(c.createdAt)||0,cpOf=c=>Number(c.observed?.cp)||0;
+const formOf=c=>speciesIndex.get(c.species)??1e9,dexOf=c=>db.pokemon[speciesIndex.get(c.species)]?.dex??1e9;
+const newestFirst=(a,b)=>added(b)-added(a);
+const comparators={
+ newest:newestFirst,
+ oldest:(a,b)=>added(a)-added(b),
+ cp:(a,b)=>cpOf(b)-cpOf(a)||newestFirst(a,b),
+ dex:(a,b)=>dexOf(a)-dexOf(b)||formOf(a)-formOf(b)||cpOf(b)-cpOf(a)||newestFirst(a,b),
+ // Cards not placed yet (e.g. just imported) come first, newest on top.
+ custom:(a,b)=>{const ra=customRank.get(a.id),rb=customRank.get(b.id);if(ra===undefined||rb===undefined)return ra===rb?newestFirst(a,b):ra===undefined?-1:1;return ra-rb}
+};
+// The reversed base keeps the previous on-screen order for ties (e.g. older cards without createdAt).
+function sortedCards(){return cards.slice().reverse().sort(comparators[sortMode])}
+function saveCustomOrder(ids){
+ customOrder=ids;customRank=new Map(ids.map((id,i)=>[id,i]));
+ try{localStorage.setItem('go-lens-order',JSON.stringify(ids))}catch{}
+}
+function setSortMode(mode){
+ // The first switch to custom starts from the order currently on screen.
+ if(mode==='custom'&&!customOrder.length)saveCustomOrder([...$('#cards').children].map(n=>n.dataset.id));
+ sortMode=mode;
+ try{localStorage.setItem('go-lens-sort',mode)}catch{}
+ if(mode!=='custom')reorderingCards=false;
+ $('#sort-cards').value=mode;
+ render();
+}
+$('#sort-cards').value=sortMode;
+$('#sort-cards').onchange=e=>setSortMode(e.target.value);
+function setReordering(on){
+ reorderingCards=on;
+ if(on){selectingCards=false;selectedCards.clear()}
+ render();
+}
+$('#reorder-cards').onclick=()=>setReordering(!reorderingCards);
+// Moves existing card nodes instead of rebuilding them, so screenshots are not decoded again.
+function arrangeCards(){
+ if(drag)return; // the drag commits its own order when it ends
+ const root=$('#cards'),nodes=sortedCards().map(c=>cardNodes.get(c.id)).filter(Boolean);
+ if(nodes.some((node,i)=>root.children[i]!==node))root.append(...nodes);
 }
 function render(){
- $('#cards').replaceChildren(...cards.slice().reverse().map(renderCard));
+ if(drag){stopDragTracking();drag=null;document.body.classList.remove('dragging-cards')}
+ cardNodes.clear();
+ $('#cards').replaceChildren(...sortedCards().map(c=>{const node=renderCard(c);cardNodes.set(c.id,node);return node}));
  syncCollection();
 }
+function cardName(c){return db.pokemon.find(p=>p.id===c.species)?.name||(c.recognizedName?c.recognizedName+' · 폼 확인 필요':'포켓몬 미확인')}
 function renderCard(c){
+ const slot=el('div','card-slot');slot.dataset.id=c.id;
  const b=el('button','card');b.type='button';
  const crop=el('div','card-shot-crop'),img=el('img','card-shot');
  img.loading='lazy';img.decoding='async';
@@ -60,7 +116,7 @@ function renderCard(c){
  img.src=c.image;
  crop.append(img);b.append(crop);
  const body=el('div','cardbody'),heading=el('div','cardheading');
- heading.append(el('h3',null,db.pokemon.find(p=>p.id===c.species)?.name||(c.recognizedName?c.recognizedName+' · 폼 확인 필요':'포켓몬 미확인')));
+ heading.append(el('h3',null,cardName(c)));
  if(c.observed?.cp)heading.append(el('p','card-cp','CP '+c.observed.cp));
  body.append(heading);
  const line=el('div','ivline');
@@ -72,19 +128,110 @@ function renderCard(c){
  const visiblePreviews=c.preview?.filter(x=>!c.observed?.cp||c.observed.cp<=x.cap);
  if(visiblePreviews?.length){
   const badges=el('div','cardpreviews');
-  for(const x of visiblePreviews)badges.append(leagueBadge(x.cap,null,x.percentile));
+  // Say whose score it is when the badge refers to an evolution or the purified form.
+  const own=db.pokemon.find(p=>p.id===c.species)?.name;
+  for(const x of visiblePreviews){const basis=[x.name&&x.name!==own?x.name:'',x.state==='purified'?'정화':''].filter(Boolean).join(' · ');badges.append(leagueBadge(x.cap,null,x.percentile,basis?basis+' 기준':''))}
   body.append(badges);
  }
  b.append(body);
  if(selectingCards)b.setAttribute('aria-pressed',String(selectedCards.has(c.id)));
+ if(reorderingCards)b.tabIndex=-1;
  b.onclick=()=>{
+  if(reorderingCards)return;
   if(!selectingCards){open(c);return}
   if(selectedCards.has(c.id))selectedCards.delete(c.id);
   else selectedCards.add(c.id);
   b.setAttribute('aria-pressed',String(selectedCards.has(c.id)));
   syncCollection();
  };
- return b;}
+ slot.append(b);
+ if(reorderingCards)slot.append(reorderHandle(c));
+ return slot;}
+
+// Custom order editing: drag the handle (mouse or touch) or use arrow keys on it.
+const gripIcon='<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><g fill="currentColor"><circle cx="9" cy="6" r="1.7"/><circle cx="15" cy="6" r="1.7"/><circle cx="9" cy="12" r="1.7"/><circle cx="15" cy="12" r="1.7"/><circle cx="9" cy="18" r="1.7"/><circle cx="15" cy="18" r="1.7"/></g></svg>';
+const prefersReducedMotion=()=>matchMedia('(prefers-reduced-motion: reduce)').matches;
+let drag=null;
+function commitOrder(){saveCustomOrder([...$('#cards').children].map(n=>n.dataset.id))}
+function announceOrder(slot){const list=[...$('#cards').children];$('#order-status').textContent=`${list.indexOf(slot)+1}번째 / 전체 ${list.length}개`}
+// Animates the other cards from their old positions (FLIP) after the DOM order changes.
+function moveSlot(mutate,moving){
+ const root=$('#cards'),others=[...root.children].filter(n=>n!==moving),before=new Map(others.map(n=>[n,[n.offsetLeft,n.offsetTop]]));
+ mutate();
+ if(prefersReducedMotion())return;
+ for(const n of others){
+  const [x,y]=before.get(n),dx=x-n.offsetLeft,dy=y-n.offsetTop;
+  if(dx||dy)n.animate([{transform:`translate(${dx}px,${dy}px)`},{transform:'none'}],{duration:200,easing:'cubic-bezier(0.16, 1, 0.3, 1)'});
+ }
+}
+function followPointer(){
+ const {slot,x,y,grabX,grabY}=drag,root=$('#cards').getBoundingClientRect();
+ slot.style.transform=`translate(${x-grabX-root.left-slot.offsetLeft}px,${y-grabY-root.top-slot.offsetTop}px)`;
+}
+// Layout positions (offsetLeft/Top) ignore running animations, so hit-testing stays stable.
+function reorderAtPointer(){
+ const root=$('#cards'),box=root.getBoundingClientRect(),px=drag.x-box.left,py=drag.y-box.top;
+ const list=[...root.children],from=list.indexOf(drag.slot);
+ const target=list.find(n=>n!==drag.slot&&px>=n.offsetLeft&&px<=n.offsetLeft+n.offsetWidth&&py>=n.offsetTop&&py<=n.offsetTop+n.offsetHeight);
+ if(!target)return;
+ const to=list.indexOf(target);
+ moveSlot(()=>root.insertBefore(drag.slot,to>from?target.nextSibling:target),drag.slot);
+}
+function autoScroll(){
+ if(!drag)return;
+ const edge=80,y=drag.y;
+ const step=y<edge?-Math.ceil((edge-y)/5):y>innerHeight-edge?Math.ceil((y-innerHeight+edge)/5):0;
+ if(step){scrollBy(0,step);reorderAtPointer();followPointer()}
+ drag.frame=requestAnimationFrame(autoScroll);
+}
+// Moving the dragged card in the DOM drops pointer capture on it, so capture on the (static) list
+// and listen on window instead.
+function onDragMove(e){if(!drag||e.pointerId!==drag.pointerId)return;drag.x=e.clientX;drag.y=e.clientY;reorderAtPointer();followPointer()}
+function onDragEnd(e){if(drag&&e.pointerId===drag.pointerId)endDrag()}
+function stopDragTracking(){
+ cancelAnimationFrame(drag.frame);
+ window.removeEventListener('pointermove',onDragMove);
+ window.removeEventListener('pointerup',onDragEnd);
+ window.removeEventListener('pointercancel',onDragEnd);
+ try{$('#cards').releasePointerCapture(drag.pointerId)}catch{}
+}
+function endDrag(){
+ if(!drag)return;
+ stopDragTracking();
+ const {slot}=drag;drag=null;
+ slot.classList.remove('dragging');document.body.classList.remove('dragging-cards');
+ if(prefersReducedMotion())slot.style.transform='';
+ else{const from=slot.style.transform;slot.style.transform='';slot.animate([{transform:from},{transform:'none'}],{duration:180,easing:'cubic-bezier(0.16, 1, 0.3, 1)'})}
+ commitOrder();announceOrder(slot);
+}
+function reorderHandle(c){
+ const handle=el('button','card-handle');
+ handle.type='button';handle.innerHTML=gripIcon;
+ handle.setAttribute('aria-label',cardName(c)+' 순서 옮기기, 끌거나 방향키로 이동');
+ handle.onpointerdown=e=>{
+  if(e.button>0||drag)return;
+  e.preventDefault();
+  const slot=handle.closest('.card-slot'),rect=slot.getBoundingClientRect();
+  drag={slot,pointerId:e.pointerId,x:e.clientX,y:e.clientY,grabX:e.clientX-rect.left,grabY:e.clientY-rect.top,frame:0};
+  try{$('#cards').setPointerCapture(e.pointerId)}catch{}
+  window.addEventListener('pointermove',onDragMove);
+  window.addEventListener('pointerup',onDragEnd);
+  window.addEventListener('pointercancel',onDragEnd);
+  slot.classList.add('dragging');document.body.classList.add('dragging-cards');
+  followPointer();
+  drag.frame=requestAnimationFrame(autoScroll);
+ };
+ handle.onkeydown=e=>{
+  const slot=handle.closest('.card-slot'),root=$('#cards'),list=[...root.children],from=list.indexOf(slot);
+  const to={ArrowUp:from-1,ArrowLeft:from-1,ArrowDown:from+1,ArrowRight:from+1,Home:0,End:list.length-1}[e.key];
+  if(to===undefined)return;
+  e.preventDefault();
+  if(to<0||to>=list.length||to===from)return;
+  moveSlot(()=>root.insertBefore(slot,to>from?list[to].nextSibling:list[to]),slot);
+  handle.focus();commitOrder();announceOrder(slot);
+ };
+ return handle;
+}
 try{cards=await transaction('readonly',s=>s.getAll());render()}catch{setInlineStatus('#collection-error','기기에 저장된 카드를 열 수 없습니다. 브라우저의 사이트 저장 설정을 확인하세요.')}
 const worker=new Worker('worker.js',{type:'module'}),pending=new Map();worker.onmessage=({data})=>{const p=pending.get(data.id);if(p){pending.delete(data.id);clearTimeout(p.timer);data.error?p.reject(Error(data.error)):p.resolve(data.result)}};worker.onerror=()=>{for(const p of pending.values()){clearTimeout(p.timer);p.reject(Error('분석 작업을 실행하지 못했습니다. 페이지를 새로 열어 주세요.'))}pending.clear()};
 function calculate(data){return new Promise((resolve,reject)=>{const id=++job,timer=setTimeout(()=>{pending.delete(id);reject(Error('계산 시간이 초과되었습니다. 다시 시도해 주세요.'))},60000);pending.set(id,{resolve,reject,timer});worker.postMessage(id===1?{id,db,...data}:{id,...data})})}
@@ -100,12 +247,14 @@ async function open(c){if(saving)return;editing=false;editRevision++;if(!$('#tra
  $('#growth-menu').open=false;
  updateReviewFields(c);
  setInlineStatus('#move-status',pokemon?'':'포켓몬을 먼저 확인해 주세요.');
- $('#source-panel').open=!matchMedia('(max-width: 760px)').matches;
+ $('#source-panel').open=false;
  $('#pokemon-name').textContent=pokemon?.name||(c.recognizedName?c.recognizedName+' · 폼 확인 필요':'포켓몬 미확인');
+ setHeroImage(c);
+ refreshSummary();
  const willAnalyze=c.confirmed&&validTrainer();
  resultStatus(willAnalyze?'분석 결과를 불러오는 중입니다…':!c.confirmed?'확인이 필요한 값을 수정하고 저장하면 리그 결과를 볼 수 있습니다.':'설정에서 트레이너 레벨을 저장해 주세요.');
  if(!detail.open)detail.showModal();
- detail.scrollTop=0;
+ scrollDetailTop();
  const shot=$('#shot');
  shot.hidden=true;
  imageObj=null;
@@ -142,13 +291,14 @@ $('#search').oninput=e=>speciesOptions(e.target.value,$('#species').value);$('#s
 $('#calibrate').onclick=()=>{cpPoints=null;calpoints=[];$('#calhelp').textContent='1/5 / 첫 막대의 왼쪽 시작점을 클릭하세요 (빈 부분 포함 전체 길이 기준).';draw()};
 $('#shot').onclick=e=>{if(!editing||!calpoints)return;const cv=$('#shot'),r=cv.getBoundingClientRect(),scale=Math.min(r.width/cv.width,r.height/cv.height),dw=cv.width*scale,dh=cv.height*scale,x=(e.clientX-r.left-(r.width-dw)/2)/dw,y=(e.clientY-r.top-(r.height-dh)/2)/dh;if(x<0||x>1||y<0||y>1)return;calpoints.push([x,y]);draw();const prompts=['','첫 막대의 오른쪽 끝을 클릭하세요 (15 IV 길이).','공격 막대 중앙을 클릭하세요.','방어 막대 중앙을 클릭하세요.','HP 막대 중앙을 클릭하세요.'];if(calpoints.length<5){$('#calhelp').textContent=`${calpoints.length+1}/5 / ${prompts[calpoints.length]}`;return}const [a,b,c,d,h]=calpoints;if(b[0]-a[0]<.1||!(c[1]<d[1]&&d[1]<h[1])){$('#calhelp').textContent='좌표 순서가 올바르지 않습니다. 보정을 다시 시작하세요.';calpoints=null;return}cal={x0:a[0],x1:b[0],ys:[c[1],d[1],h[1]]};calpoints=null;draw();const result=detect(cv.getContext('2d').getImageData(0,0,cv.width,cv.height),cal);['atk','def','hp'].forEach((k,i)=>$('#'+k).value=result.iv[i]);syncIV();$('#iv-confirm').checked=false;updateEstimate();$('#calhelp').textContent='좌표 보정 완료. 판독한 IV를 확인하고 저장하세요. 같은 화면 배치에서만 유효합니다.'};
 function metric(title,value,sub,right){const n=el('div','metric'),a=el('div');a.append(el('small',null,title),el('strong',null,value),el('small',null,sub));n.append(a);if(right){const b=el('div','right');b.append(el('strong',null,right[0]),el('small',null,right[1]));n.append(b)}return n}
-async function analyze(persist=true){if(persist&&!editing)return;const revision=editRevision,c=selected;showError('');try{const p=db.pokemon.find(p=>p.id===$('#species').value);if(!p)throw Error('종과 폼을 선택하세요.');if(!$('#iv-confirm').checked)throw Error('조사 막대를 확인한 뒤 IV 확인에 체크하세요.');const iv=['atk','def','hp'].map(k=>Number($('#'+k).value)),trainer=Number($('#trainer').value),state=getState(),max=50,threshold=Number($('#threshold').value),cpFloor=Number($('#cpfloor').value)/100;if(!validTrainer()){if(persist)openSettings();return}legalMoves(db,p,state);if(!Number.isFinite(threshold)||threshold<0||threshold>100||cpFloor<0||cpFloor>1)throw Error('기준은 0–100%로 입력하세요.');const observed={cp:Number($('#observed-cp').value)||null,hp:Number($('#observed-hp').value)||null};if(c.observed?.calculatedLevel&&c.observed.cp===observed.cp&&c.observed.hp===observed.hp)observed.calculatedLevel=c.observed.calculatedLevel;if(observed.cp&&(!Number.isInteger(observed.cp)||observed.cp<10||observed.cp>20000)||observed.hp&&(!Number.isInteger(observed.hp)||observed.hp<10||observed.hp>2000))throw Error('CP·HP는 화면에 보이는 정수로 입력하세요.');const inference=inferLevel(db,p,iv,trainer,observed,state),level=inference.level,data={p,iv,trainer,observed,...state,max,threshold,cpFloor,fast:$('#fast').value,charged:$('#charged').value,charged2:$('#charged2').value};if(persist){saving=true;applyEditMode()}$('#analyze').disabled=true;$('#analyze').textContent='레벨 / 진화 후보 / 기술 비교 중…';const r=await calculate(data);if(selected?.id!==c.id||revision!==editRevision)return;const updated={...c,species:p.id,iv,trainer,observed,...state,level:undefined,max:undefined,threshold,cpFloor,fast:data.fast,charged:data.charged,charged2:data.charged2,confirmed:true,preview:r.previews.map(x=>({name:x.name,cap:x.cap,state:x.state,percentile:x.percentile}))};if(persist){if(imageObj&&!c.growthBase)updated.appearance=formAppearance($('#shot'),p.id);await save(updated);selected=updated;try{if(cal)localStorage.setItem('go-lens-cal',JSON.stringify(cal))}catch{}}resultStatus('');renderResults($('#results'),r,{...data,level,db});if(persist){editing=false;editRevision++;updateReviewFields(updated);$('#card-fields').open=false;$('#move-panel').open=false;$('#source-panel').open=!matchMedia('(max-width: 760px)').matches;$('#detail').scrollTop=0}applyEditMode();}catch(e){if(revision===editRevision){if(persist){showError(e.message);$('#save-feedback').focus();}else resultStatus('분석 결과를 열 수 없습니다. 카드를 다시 열거나 정보를 확인해 주세요.')}}finally{saving=false;applyEditMode();$('#analyze').disabled=false;$('#analyze').textContent='수정 저장 / 분석하기'}}
+async function analyze(persist=true){if(persist&&!editing)return;const revision=editRevision,c=selected;showError('');try{const p=db.pokemon.find(p=>p.id===$('#species').value);if(!p)throw Error('종과 폼을 선택하세요.');if(!$('#iv-confirm').checked)throw Error('조사 막대를 확인한 뒤 IV 확인에 체크하세요.');const iv=['atk','def','hp'].map(k=>Number($('#'+k).value)),trainer=Number($('#trainer').value),state=getState(),max=50,threshold=Number($('#threshold').value),cpFloor=Number($('#cpfloor').value)/100;if(!validTrainer()){if(persist)openSettings();return}legalMoves(db,p,state);if(!Number.isFinite(threshold)||threshold<0||threshold>100||cpFloor<0||cpFloor>1)throw Error('기준은 0–100%로 입력하세요.');const observed={cp:Number($('#observed-cp').value)||null,hp:Number($('#observed-hp').value)||null};if(c.observed?.calculatedLevel&&c.observed.cp===observed.cp&&c.observed.hp===observed.hp)observed.calculatedLevel=c.observed.calculatedLevel;if(observed.cp&&(!Number.isInteger(observed.cp)||observed.cp<10||observed.cp>20000)||observed.hp&&(!Number.isInteger(observed.hp)||observed.hp<10||observed.hp>2000))throw Error('CP·HP는 화면에 보이는 정수로 입력하세요.');const inference=inferLevel(db,p,iv,trainer,observed,state),level=inference.level,data={p,iv,trainer,observed,...state,max,threshold,cpFloor,fast:$('#fast').value,charged:$('#charged').value,charged2:$('#charged2').value};if(persist){saving=true;applyEditMode()}$('#analyze').disabled=true;$('#analyze').textContent='레벨 / 진화 후보 / 기술 비교 중…';const r=await calculate(data);if(selected?.id!==c.id||revision!==editRevision)return;const updated={...c,species:p.id,iv,trainer,observed,...state,level:undefined,max:undefined,threshold,cpFloor,fast:data.fast,charged:data.charged,charged2:data.charged2,confirmed:true,preview:r.previews.map(x=>({name:x.name,cap:x.cap,state:x.state,percentile:x.percentile})),previewVersion:PREVIEW_VERSION};if(persist){if(imageObj&&!c.growthBase)updated.appearance=formAppearance($('#shot'),p.id);await save(updated);selected=updated;try{if(cal)localStorage.setItem('go-lens-cal',JSON.stringify(cal))}catch{}}resultStatus('');renderResults($('#results'),r,{...data,level,db});refreshSummary(inference);if(persist){editing=false;editRevision++;updateReviewFields(updated);$('#card-fields').open=false;$('#move-panel').open=false;$('#source-panel').open=false;scrollDetailTop()}applyEditMode();}catch(e){if(revision===editRevision){if(persist){showError(e.message);$('#save-feedback').focus();}else resultStatus('분석 결과를 열 수 없습니다. 카드를 다시 열거나 정보를 확인해 주세요.')}}finally{saving=false;applyEditMode();$('#analyze').disabled=false;$('#analyze').textContent='수정 저장 / 분석하기'}}
 
 $('#analyze').onclick=()=>analyze();
 $('#delete').onclick=async()=>{if(!editing)return;if(!selected||!confirm('이 카드와 스크린샷을 기기에서 삭제할까요?'))return;const id=selected.id;try{await transaction('readwrite',s=>s.delete(id))}catch{showError('이 카드를 삭제하지 못했습니다. 다시 시도하세요.');$('#save-feedback').focus();return}cards=cards.filter(c=>c.id!==id);$('#detail').close();render()};
 $('#select-cards').onclick=()=>{
  selectingCards=!selectingCards;
  selectedCards.clear();
+ if(selectingCards)reorderingCards=false;
  render();
 };
 $('#delete-selected').onclick=async()=>{
@@ -196,6 +346,7 @@ async function recoverObservation(card){
  if(confirmed&&pokemon&&iv){
   const result=await calculate({mode:'preview',p:pokemon,iv,trainer,observed,shadow:card.shadow,purified:card.purified,lucky:card.lucky});
   updated.preview=result.previews;
+  updated.previewVersion=PREVIEW_VERSION;
  }
  return updated;
 }
@@ -210,7 +361,7 @@ async function addFrame(source,time=0,stableFrame,scene){
  const image=canvas.toDataURL('image/jpeg',.84);
  const iv=detected.candidate?detected.iv:null;
  const trainer=Number($('#trainer').value);
- const card={id:crypto.randomUUID(),image,time,iv,confidence:detected.confidence||'조사 화면을 확인하세요.',sig,confirmed:false};
+ const card={id:crypto.randomUUID(),createdAt:Date.now(),image,time,iv,confidence:detected.confidence||'조사 화면을 확인하세요.',sig,confirmed:false};
  try{
   const {pokemon,name,observed,verified}=await recognizeFrame(canvas,db,iv,trainer,{references:appearanceReferences()});
   if(name)card.recognizedName=name;
@@ -223,6 +374,7 @@ async function addFrame(source,time=0,stableFrame,scene){
     const result=await calculate({mode:'preview',p:pokemon,iv,observed,trainer});
     card.confirmed=true;
     card.preview=result.previews;
+    card.previewVersion=PREVIEW_VERSION;
     card.trainer=trainer;
    }
   }
@@ -234,13 +386,20 @@ async function addFrame(source,time=0,stableFrame,scene){
  return true;
 }
 function waitVideo(v,event,action){return new Promise((resolve,reject)=>{const timer=setTimeout(()=>finish(Error('영상을 읽는 시간이 초과되었습니다. MP4 또는 스크린샷으로 다시 시도하세요.')),20000),ok=()=>finish(),bad=()=>finish(Error('이 브라우저가 영상 코덱을 재생하지 못합니다. H.264 MP4 또는 스크린샷을 사용하세요.'));function finish(err){clearTimeout(timer);v.removeEventListener(event,ok);v.removeEventListener('error',bad);err?reject(err):resolve()}v.addEventListener(event,ok,{once:true});v.addEventListener('error',bad,{once:true});action()})}
+// Browsers defer media loading in hidden tabs; wait instead of timing out when the user switches away.
+function whenVisible(){
+ if(document.visibilityState==='visible')return Promise.resolve();
+ status('화면으로 돌아오면 영상 분석을 이어서 진행합니다.');
+ return new Promise(resolve=>document.addEventListener('visibilitychange',function check(){if(document.visibilityState!=='visible')return;document.removeEventListener('visibilitychange',check);resolve()}));
+}
 async function readVideoFrame(video,time){
+ await whenVisible();
  if(video.currentTime!==time)await waitVideo(video,'seeked',()=>{video.currentTime=time});
  else if(video.readyState<2)await waitVideo(video,'loadeddata',()=>{});
  const pixels=frame(video);
  return {pixels,detected:detect(pixels)};
 }
-async function scanVideoFrame(video,time,scene){
+async function scanVideoFrame(video,time,scene,offset=0){
  const candidate=await readVideoFrame(video,time);
  // Loose color and calibration matches are useful for manual capture, but insufficient for automatic video import.
  if(cancel||!candidate.detected.tracks){scene.last=null;return false}
@@ -248,29 +407,100 @@ async function scanVideoFrame(video,time,scene){
  if(nextTime<video.duration){
   const next=await readVideoFrame(video,nextTime);
   if(cancel)return false;
-  if(sameAppraisal(candidate.detected,next.detected))return addFrame(video,nextTime,next,scene);
+  if(sameAppraisal(candidate.detected,next.detected))return addFrame(video,offset+nextTime,next,scene);
  }
  const previousTime=time-.2;
  if(previousTime>=0){
   const previous=await readVideoFrame(video,previousTime);
-  if(!cancel&&sameAppraisal(candidate.detected,previous.detected))return addFrame(video,time,candidate,scene);
+  if(!cancel&&sameAppraisal(candidate.detected,previous.detected))return addFrame(video,offset+time,candidate,scene);
  }
  scene.last=null;
  return false;
 }
-$('#stop').onclick=()=>{cancel=true;status('현재 프레임 처리 후 중지합니다. 저장된 카드는 유지됩니다.')};
-$('#capture').onclick=async()=>{if(busy)return;try{await addFrame($('#video'),$('#video').currentTime);status('현재 장면을 저장했습니다. 카드를 선택해 교정하세요.')}catch(e){status(e.message)}};
+// Native playback first. MOV that the browser rejects is retried as MP4 (same container family); if the codec
+// itself is unsupported (e.g. HEVC without a hardware decoder), the video is converted to H.264 on this device.
+let convertAbort=null,videoOffset=0;
+const maxVideoSeconds=900,segmentSeconds=60;
+const tooLong=()=>Error('MVP는 최대 15분 영상까지 지원합니다. 짧게 나누어 주세요.');
+const clock=s=>Math.floor(s/60)+':'+String(Math.floor(s%60)).padStart(2,'0');
+async function loadVideoSource(v,blob){
+ await whenVisible();
+ if(videoURL)URL.revokeObjectURL(videoURL);
+ videoURL=URL.createObjectURL(blob);
+ await waitVideo(v,'loadedmetadata',()=>{v.src=videoURL;v.load()});
+ // Unsupported video codecs often load as audio only: metadata arrives but there is no picture.
+ if(!v.videoWidth||!v.videoHeight)throw Error('영상 트랙을 디코딩하지 못했습니다.');
+ await readVideoFrame(v,Math.min(.05,(v.duration||0)/2));
+}
+async function tryNativeVideo(v,file){
+ const attempts=[file];
+ if(/quicktime/i.test(file.type)||/\.mov$/i.test(file.name))attempts.push(new Blob([file],{type:'video/mp4'}));
+ let duration=NaN;
+ for(const source of attempts){
+  try{await loadVideoSource(v,source);return {ok:true,duration:v.duration}}
+  catch{if(Number.isFinite(v.duration)&&v.duration>0)duration=v.duration}
+  if(cancel)throw new DOMException('중지','AbortError');
+ }
+ return {ok:false,duration};
+}
+function showVideoPanel(label){$('#videoPanel').hidden=false;$('#videoPanel > summary').textContent=label+' · 놓친 장면 직접 저장'}
+// Scans the loaded video once per second; returns how many cards were added.
+async function scanLoadedVideo(v,{offset=0,scene,report}){
+ v.pause();
+ let found=0;
+ for(let t=.05;t<v.duration&&!cancel;t+=1){
+  if(await scanVideoFrame(v,t,scene,offset))found++;
+  report(t,found);
+  await new Promise(r=>setTimeout(r,0));
+ }
+ return found;
+}
+async function convertAndScan(v,file,knownDuration,scene,cardsBefore){
+ const note='이 브라우저가 바로 재생하지 못하는 영상 코덱(HEVC 등)이라 이 기기 안에서 H.264로 변환하며 분석합니다. 화면을 열어 두세요.';
+ status('영상 변환 모듈을 준비하는 중입니다… '+note);
+ $('#progress').value=0;
+ const converter=createConverter();
+ convertAbort=new AbortController();
+ const {signal}=convertAbort;
+ let found=0;
+ try{
+  const duration=knownDuration>0?knownDuration:await converter.probe(file,{signal});
+  if(!(duration>0))throw Error('영상 길이를 읽지 못했습니다. 스크린샷을 사용하세요.');
+  if(duration>maxVideoSeconds)throw tooLong();
+  void prepareFrameReader().catch(()=>{});
+  // Short videos convert in one pass; long ones in segments so memory stays bounded and cards appear early.
+  const segments=[];
+  for(let start=0;start<duration;){const length=duration-start<=segmentSeconds*1.5?duration-start:segmentSeconds;segments.push({start,length});start+=length}
+  for(const [index,{start,length}] of segments.entries()){
+   if(cancel)break;
+   const part=segments.length>1?` ${index+1}/${segments.length} 구간`:'';
+   const share=x=>(start+x*length)/duration;
+   const blob=await converter.convert(file,segments.length>1?{start,length,signal,onProgress:ratio=>{$('#progress').value=share(ratio*.85);status(`영상 코덱 변환${part} ${Math.round(ratio*100)}% / 새 카드 ${cardsBefore+found}개 / ${note}`)}}:{duration,signal,onProgress:ratio=>{$('#progress').value=share(ratio*.85);status(`영상 코덱 변환 ${Math.round(ratio*100)}% / ${note}`)}});
+   if(cancel)break;
+   await loadVideoSource(v,blob);
+   videoOffset=start;
+   showVideoPanel(segments.length>1?`영상 미리보기 (H.264 변환본 ${clock(start)}–${clock(start+length)})`:'영상 미리보기 (H.264 변환본)');
+   found+=await scanLoadedVideo(v,{offset:start,scene,report:(t,inSegment)=>{$('#progress').value=share(.85+.15*Math.min(1,t/v.duration));status(`${Math.floor(start+t)} / ${Math.floor(duration)}초 확인 (H.264 변환본) / 새 카드 ${cardsBefore+found+inSegment}개 / 화면을 열어 두세요.`)}});
+  }
+ }finally{
+  converter.close();
+  convertAbort=null;
+ }
+ return found;
+}
+$('#stop').onclick=()=>{cancel=true;convertAbort?.abort();status('현재 프레임 처리 후 중지합니다. 저장된 카드는 유지됩니다.')};
+$('#capture').onclick=async()=>{if(busy)return;try{await addFrame($('#video'),videoOffset+$('#video').currentTime);status('현재 장면을 저장했습니다. 카드를 선택해 교정하세요.')}catch(e){status(e.message)}};
 let queuedFiles=[];
-async function importFiles(files){if(busy||!files.length)return;if(!validTrainer()){queuedFiles=files;openSettings();return}busy=true;cancel=false;setInlineStatus('#collection-error','');syncCollection();status('파일을 읽는 중입니다…');$('#progress').removeAttribute('value');$('#files').disabled=true;$('#stop').hidden=false;$('#progress').hidden=false;let n=0;try{for(const file of files){if(cancel)break;if(file.type.startsWith('image/')||/\.(png|jpe?g|webp|heic|heif)$/i.test(file.name)){const url=URL.createObjectURL(file);try{void prepareFrameReader().catch(()=>{});const img=await loadImage(url);await addFrame(img);n++}finally{URL.revokeObjectURL(url)}continue}if(!file.type.startsWith('video/')&&!/\.(mp4|mov|m4v)$/i.test(file.name)){status('영상 또는 이미지 파일만 선택하세요.');continue}if(file.size>1024**3)throw Error('영상은 1GB 이하로 나누어 선택하세요.');if(videoURL)URL.revokeObjectURL(videoURL);videoURL=URL.createObjectURL(file);const v=$('#video');await waitVideo(v,'loadedmetadata',()=>{v.src=videoURL;v.load()});$('#videoPanel').hidden=false;if(!Number.isFinite(v.duration)||v.duration>900)throw Error('MVP는 최대 15분 영상까지 지원합니다. 짧게 나누어 주세요.');v.pause();void prepareFrameReader().catch(()=>{});const scene={last:null},step=1;for(let t=.05;t<v.duration&&!cancel;t+=step){if(await scanVideoFrame(v,t,scene))n++;$('#progress').value=t/v.duration;status(`${Math.floor(t)} / ${Math.floor(v.duration)}초 확인 / 새 카드 ${n}개 / 화면을 열어 두세요.`);await new Promise(r=>setTimeout(r,0))}}status(cancel?'분석을 중지했습니다.':n?'':'조사 화면을 찾지 못했습니다. 스크린샷을 선택하거나 영상 미리보기에서 장면을 저장하세요.')}catch(e){status('');setInlineStatus('#collection-error',e.message)}finally{busy=false;syncCollection();$('#files').disabled=false;$('#files').value='';$('#stop').hidden=true;$('#progress').hidden=true}}
+async function importFiles(files){if(busy||!files.length)return;if(!validTrainer()){queuedFiles=files;openSettings();return}if(reorderingCards){endDrag();setReordering(false)}busy=true;cancel=false;setInlineStatus('#collection-error','');syncCollection();status('파일을 읽는 중입니다…');$('#progress').removeAttribute('value');$('#files').disabled=true;$('#stop').hidden=false;$('#progress').hidden=false;let n=0;try{for(const file of files){if(cancel)break;if(file.type.startsWith('image/')||/\.(png|jpe?g|webp|heic|heif)$/i.test(file.name)){const url=URL.createObjectURL(file);try{void prepareFrameReader().catch(()=>{});const img=await loadImage(url);await addFrame(img);n++}finally{URL.revokeObjectURL(url)}continue}if(!file.type.startsWith('video/')&&!/\.(mp4|mov|m4v)$/i.test(file.name)){status('영상 또는 이미지 파일만 선택하세요.');continue}if(file.size>1024**3)throw Error('영상은 1GB 이하로 나누어 선택하세요.');const v=$('#video'),scene={last:null},native=await tryNativeVideo(v,file);if(native.ok){if(!Number.isFinite(v.duration)||v.duration>maxVideoSeconds)throw tooLong();videoOffset=0;showVideoPanel('영상 미리보기');void prepareFrameReader().catch(()=>{});const before=n;n+=await scanLoadedVideo(v,{scene,report:(t,found)=>{$('#progress').value=t/v.duration;status(`${Math.floor(t)} / ${Math.floor(v.duration)}초 확인 / 새 카드 ${before+found}개 / 화면을 열어 두세요.`)}})}else n+=await convertAndScan(v,file,native.duration,scene,n)}status(cancel?'분석을 중지했습니다.':n?'':'조사 화면을 찾지 못했습니다. 스크린샷을 선택하거나 영상 미리보기에서 장면을 저장하세요.')}catch(e){if(e?.name==='AbortError'||cancel)status('분석을 중지했습니다.');else{status('');setInlineStatus('#collection-error',e.message)}}finally{busy=false;syncCollection();$('#files').disabled=false;$('#files').value='';$('#stop').hidden=true;$('#progress').hidden=true}}
 $('#files').onchange=e=>importFiles([...e.target.files]);const drop=$('#drop');drop.ondragover=e=>{e.preventDefault();drop.classList.add('drag')};drop.ondragleave=()=>drop.classList.remove('drag');drop.ondrop=e=>{e.preventDefault();drop.classList.remove('drag');importFiles([...e.dataTransfer.files])};
-$('#demo').onclick=async()=>{if(!$('#trainer').value)$('#trainer').value=40;const cv=document.createElement('canvas');cv.width=390;cv.height=720;const c=cv.getContext('2d');c.fillStyle='#e9eee0';c.fillRect(0,0,390,720);c.fillStyle='#456347';c.font='20px sans-serif';c.fillText('CP1400',135,65);c.font='16px sans-serif';c.fillText('예제 / 마릴리',40,100);c.font='100px sans-serif';c.fillText('◎',145,240);c.fillStyle='#fffdf5';c.fillRect(28,350,334,300);c.fillStyle='#3e5c42';c.font='18px sans-serif';c.fillText('EXAMPLE / 0 / 15 / 15',48,390);['ATTACK','DEFENSE','HP'].forEach((t,i)=>{c.fillStyle='#50684a';c.font='12px sans-serif';c.fillText(t,48,428+i*60);c.fillStyle='#e3e5d9';c.fillRect(48,440+i*60,270,10);if(i){c.fillStyle='#ec9a48';c.fillRect(48,440+i*60,270,10)}});try{await save({id:crypto.randomUUID(),image:cv.toDataURL('image/jpeg'),demo:true,species:'azumarill',iv:[0,15,15],observed:{cp:1400},trainer:40,confirmed:true,confidence:'예제 데이터 / 실제 포켓몬 아님',time:0});setInlineStatus('#collection-error','');status('예제 카드를 추가했습니다. 선택하면 계산 결과를 볼 수 있습니다.')}catch(error){setInlineStatus('#collection-error',error.message)}};
+$('#demo').onclick=async()=>{if(!$('#trainer').value)$('#trainer').value=40;const cv=document.createElement('canvas');cv.width=390;cv.height=720;const c=cv.getContext('2d');c.fillStyle='#e9eee0';c.fillRect(0,0,390,720);c.fillStyle='#456347';c.font='20px sans-serif';c.fillText('CP1400',135,65);c.font='16px sans-serif';c.fillText('예제 / 마릴리',40,100);c.font='100px sans-serif';c.fillText('◎',145,240);c.fillStyle='#fffdf5';c.fillRect(28,350,334,300);c.fillStyle='#3e5c42';c.font='18px sans-serif';c.fillText('EXAMPLE / 0 / 15 / 15',48,390);['ATTACK','DEFENSE','HP'].forEach((t,i)=>{c.fillStyle='#50684a';c.font='12px sans-serif';c.fillText(t,48,428+i*60);c.fillStyle='#e3e5d9';c.fillRect(48,440+i*60,270,10);if(i){c.fillStyle='#ec9a48';c.fillRect(48,440+i*60,270,10)}});try{await save({id:crypto.randomUUID(),createdAt:Date.now(),image:cv.toDataURL('image/jpeg'),demo:true,species:'azumarill',iv:[0,15,15],observed:{cp:1400},trainer:40,confirmed:true,confidence:'예제 데이터 / 실제 포켓몬 아님',time:0});setInlineStatus('#collection-error','');status('예제 카드를 추가했습니다. 선택하면 계산 결과를 볼 수 있습니다.')}catch(error){setInlineStatus('#collection-error',error.message)}};
 
 
 $('.editor').addEventListener('input',e=>{if(!editing)return;editRevision++;if(!e.target.closest('#results'))$('#results').replaceChildren()});
 
 const cpCanvas=document.createElement('canvas');let templates;let cpPoints=null;
-function syncIV(){for(const k of ['atk','def','hp'])$('#'+k+'-value').textContent=editing||selected?.iv?$('#'+k).value:'?'}
-function updateEstimate(){const p=db.pokemon.find(p=>p.id===$('#species').value);$('#pokemon-name').textContent=p?.name||'포켓몬 미확인';if(!p||!validTrainer())return null;try{return inferLevel(db,p,['atk','def','hp'].map(k=>Number($('#'+k).value)),Number($('#trainer').value),{cp:$('#observed-cp').value,hp:$('#observed-hp').value},getState())}catch{return null}}
+function syncIV(){for(const k of ['atk','def','hp'])$('#'+k+'-value').textContent=editing||selected?.iv?$('#'+k).value:'?';renderIvSummary()}
+function updateEstimate(){const p=db.pokemon.find(p=>p.id===$('#species').value);$('#pokemon-name').textContent=p?.name||'포켓몬 미확인';const inference=estimateLevel(p);refreshSummary(inference);return inference}
 function readCP(rect={x0:.2,y0:.065,x1:.82,y1:.22}){if(!imageObj)return;$('#results').replaceChildren();const w=imageObj.naturalWidth,h=imageObj.naturalHeight;cpCanvas.width=500;cpCanvas.height=Math.min(500,Math.max(24,Math.round((rect.y1-rect.y0)*h/((rect.x1-rect.x0)*w)*500)));const ctx=cpCanvas.getContext('2d',{willReadFrequently:true});ctx.drawImage(imageObj,rect.x0*w,rect.y0*h,(rect.x1-rect.x0)*w,(rect.y1-rect.y0)*h,0,0,cpCanvas.width,cpCanvas.height);const r=recognizeCP(ctx.getImageData(0,0,cpCanvas.width,cpCanvas.height),templates??=digitTemplates(document.createElement('canvas')));if(r){$('#observed-cp').value=r.cp;$('#calhelp').textContent='CP 자동 판독 '+r.cp+' / '+r.confidence+' / 원본과 비교해 주세요.'}else $('#calhelp').textContent='CP를 읽지 못했습니다. CP 영역을 선택하거나 화면의 CP를 교정 입력하세요.';updateEstimate();return r}
 for(const k of ['atk','def','hp'])$('#'+k).oninput=()=>{syncIV();$('#iv-confirm').checked=true;updateEstimate()};for(const k of ['observed-cp','observed-hp'])$('#'+k).oninput=updateEstimate;
 for(const k of ['shadow','purified','lucky'])$('#state-'+k).onchange=()=>{if($('#state-'+k).checked){if(k==='shadow'){$('#state-purified').checked=false;$('#state-lucky').checked=false}else $('#state-shadow').checked=false}const f=$('#fast').value,c=$('#charged').value,c2=$('#charged2').value;moveOptions(db.pokemon.find(p=>p.id===$('#species').value),f,c,c2);updateEstimate()};
@@ -282,7 +512,7 @@ $('#cp-read').onclick=()=>readCP();$('#cp-crop').onclick=()=>{cpPoints=[];calpoi
 function applyEditMode(){const dialog=$('#detail');dialog.classList.toggle('editing',editing);syncIV();for(const control of dialog.querySelectorAll('.editor input,.editor select,.editor textarea'))control.disabled=saving||(!editing&&!['fast','charged','charged2'].includes(control.id));
  for(const id of ['fast','charged','charged2'])$('#'+id).disabled=saving||!$('#species').value;
  $('#edit').disabled=saving;$('#detail-close').disabled=saving;$('#growth-menu').hidden=editing;$('#direct-entry').hidden=!editing;$('#calibration-help').hidden=!editing;$('#review-fields').hidden=editing||![...$('#review-fields').children].some(button=>!button.hidden);for(const id of ['calibrate','cp-crop','cp-read','delete'])$('#'+id).hidden=!editing;$('#analyze').hidden=!editing;$('#edit').hidden=editing;$('#cancel-edit').hidden=!editing;$('#cancel-edit').disabled=saving;for(const id of ['calibrate','cp-crop','cp-read','delete'])$('#'+id).disabled=saving;$('#choose-species').hidden=!editing;$('#evolve').hidden=editing;$('#power-up').hidden=editing;$('#growth-reset').disabled=saving;if(editing&&!saving){const f=$('#fast').value,c=$('#charged').value,c2=$('#charged2').value;moveOptions(db.pokemon.find(p=>p.id===$('#species').value),f,c,c2)}}
-function beginEdit(focus='#atk'){if(!selected||saving||editing)return;editCalSnapshot=cal?structuredClone(cal):null;editing=true;editRevision++;resultStatus('');$('#card-fields').open=true;$('#move-panel').open=true;$('#source-panel').open=true;applyEditMode();$('#detail').scrollTop=0;$(focus).focus();}
+function beginEdit(focus='#atk'){if(!selected||saving||editing)return;editCalSnapshot=cal?structuredClone(cal):null;editing=true;editRevision++;resultStatus('');$('#card-fields').open=true;$('#move-panel').open=true;$('#source-panel').open=true;applyEditMode();scrollDetailTop();$(focus).focus();}
 $('#edit').onclick=()=>beginEdit();
 $('#review-cp').onclick=()=>beginEdit('#observed-cp');
 $('#review-iv').onclick=()=>beginEdit();
@@ -368,3 +598,121 @@ $('#evolve').onclick=()=>openGrowth('evolve');$('#power-up').onclick=()=>openGro
 $('#growth-dialog').addEventListener('close',()=>{if($('#detail').open)$('#growth-menu > summary').focus()});
 $('#growth-form').onsubmit=async e=>{e.preventDefault();const button=$('#growth-apply');button.disabled=true;try{const updated=applyGrowth(db,selected,Number($('#trainer').value),{kind:growthKind,count:Number($('#growth-count').value),target:$('#evolve-target').value,fast:$('#evolve-fast').value,charged:$('#evolve-charged').value});await save(updated);$('#growth-dialog').close();await open(updated)}catch(err){$('#growth-error').textContent=err.message;$('#growth-error').hidden=false}finally{button.disabled=false}};
 $('#growth-reset').onclick=async()=>{if(!selected?.growthBase||saving)return;const restored=resetGrowth(selected);try{await save(restored);await open(restored)}catch(error){showError(error.message);$('#save-feedback').focus()}};
+
+// Detail sheet: hero screenshot, IV summary, move pills and quick navigation.
+const ivRatings=[[45,4,'완벽한 IV예요!'],[37,3,'멋진 IV예요!'],[30,2,'좋은 IV예요'],[23,1,'괜찮은 IV예요'],[0,0,'아쉬운 IV예요']];
+const swordIcon='<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14.5 17.5 3 6V3h3l11.5 11.5"/><path d="m13 19 6-6"/><path d="m16 16 4 4"/><path d="m19 21 2-2"/></svg>';
+const scrollMotion=()=>matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth';
+function scrollDetailTop(){$('#detail').scrollTop=0;$('#detail .detailbody').scrollTop=0}
+function setHeroImage(card){
+ const shot=$('#hero-shot'),hero=$('#hero');
+ shot.onload=()=>hero.style.setProperty('--shot-ratio',shot.naturalWidth/shot.naturalHeight);
+ shot.alt=card.demo?'예제 조사 화면':'조사 화면 스크린샷';
+ shot.src=card.image;$('#hero-backdrop').src=card.image;
+}
+function ivValues(){return ['atk','def','hp'].map(k=>Number($('#'+k).value))}
+function estimateLevel(p){
+ if(!p||!validTrainer()||!(editing||selected?.iv))return null;
+ const observed={cp:Number($('#observed-cp').value)||null,hp:Number($('#observed-hp').value)||null};
+ if(selected?.observed?.calculatedLevel&&selected.observed.cp===observed.cp&&selected.observed.hp===observed.hp)observed.calculatedLevel=selected.observed.calculatedLevel;
+ try{return inferLevel(db,p,ivValues(),Number($('#trainer').value),observed,getState())}catch{return null}
+}
+function refreshSummary(inference=estimateLevel(db.pokemon.find(p=>p.id===$('#species').value))){
+ const meta=$('#identity-meta'),cp=Number($('#observed-cp').value),hp=Number($('#observed-hp').value);
+ meta.replaceChildren();
+ if(cp)meta.append(el('span','meta-figure','CP '+cp));
+ if(hp)meta.append(el('span','meta-figure','HP '+hp));
+ for(const [key,label] of [['shadow','그림자'],['purified','정화'],['lucky','반짝반짝']])if($('#state-'+key).checked){const chip=el('span','state-chip',label);chip.dataset.state=key;meta.append(chip)}
+ meta.hidden=!meta.childElementCount;
+ const levels=['matched','range','growth'].includes(inference?.status)?inference.levels:[],chip=$('#hero-level');
+ chip.hidden=!levels.length;
+ chip.textContent=levels.length?'Lv '+[...new Set([levels[0],levels.at(-1)])].map(l=>l.toFixed(1)).join('–'):'';
+ $('#bar-name').textContent=$('#pokemon-name').textContent;
+ renderIvSummary();
+}
+function renderIvSummary(){
+ const box=$('#iv-summary'),ring=$('#iv-ring-value');
+ if(!(editing||selected?.iv)){box.dataset.rating='unknown';ring.style.strokeDasharray='0 100';ring.style.visibility='hidden';$('#iv-percent').replaceChildren('?');$('#iv-rating').textContent='IV 확인 필요';return}
+ const sum=ivValues().reduce((a,b)=>a+b,0),percent=sum/45*100,[,stars,text]=ivRatings.find(([min])=>sum>=min);
+ box.dataset.rating=String(stars);
+ ring.style.strokeDasharray=`${percent} 100`;
+ ring.style.visibility=percent?'visible':'hidden';
+ $('#iv-percent').replaceChildren(String(Math.round(percent)),el('small',null,'%'));
+ $('#iv-rating').textContent=text;
+}
+function renderMovePills(){
+ const root=$('#move-pills'),open=String($('#move-panel').open);
+ root.replaceChildren();
+ for(const [id,kind] of [['fast','노말 기술'],['charged','스페셜 기술'],['charged2','스페셜 기술']]){
+  const move=db.moves[$('#'+id).value];
+  if(!move)continue;
+  const pill=el('button','move-pill',move.name);
+  pill.type='button';
+  pill.style.setProperty('--type',typeColor(move.type));
+  pill.title=`${typeName(move.type)} 타입 ${kind} · 눌러서 변경`;
+  pill.setAttribute('aria-label',`${move.name}, ${typeName(move.type)} 타입 ${kind}, 보유 기술 변경`);
+  pill.setAttribute('aria-controls','move-panel');pill.setAttribute('aria-expanded',open);
+  pill.onclick=()=>toggleMovePanel(id);
+  root.append(pill);
+ }
+ if(!root.childElementCount&&$('#species').value){
+  const pill=el('button','move-pill pending','보유 기술 선택');
+  pill.type='button';pill.setAttribute('aria-controls','move-panel');pill.setAttribute('aria-expanded',open);
+  pill.onclick=()=>toggleMovePanel('fast');
+  root.append(pill);
+ }
+ const results=$('#results'),tier=results.childElementCount?results.dataset.bestTier:null;
+ if(tier){
+  const badge=el('button','tier-pill');
+  badge.type='button';badge.dataset.tier=tier;badge.innerHTML=swordIcon;badge.append(el('span',null,tier));
+  badge.title='레이드 기술 등급';badge.setAttribute('aria-label',`레이드 기술 등급 ${tier}, 상세 보기`);
+  badge.onclick=()=>jumpTo('raid');
+  root.append(badge);
+ }
+ root.hidden=!root.childElementCount;
+}
+function toggleMovePanel(id){
+ const panel=$('#move-panel');
+ panel.open=!panel.open;
+ if(!panel.open)return;
+ const field=$('#'+id);
+ if(!field.disabled)field.focus({preventScroll:true});
+ panel.scrollIntoView({behavior:scrollMotion(),block:'nearest'});
+}
+function jumpTo(key){$('#result-'+key)?.scrollIntoView({behavior:scrollMotion(),block:'start'})}
+$('#move-panel').addEventListener('toggle',()=>{for(const pill of $('#move-pills').querySelectorAll('[aria-controls="move-panel"]'))pill.setAttribute('aria-expanded',String($('#move-panel').open))});
+new MutationObserver(renderMovePills).observe($('#results'),{childList:true});
+$('#jump-pvp').onclick=()=>jumpTo('pvp');
+$('#jump-raid').onclick=()=>jumpTo('raid');
+$('#source-open').onclick=()=>{const panel=$('#source-panel');panel.open=true;panel.scrollIntoView({behavior:scrollMotion(),block:'start'})};
+$('#bar-close').onclick=()=>{if(!$('#detail-close').disabled)$('#detail').close()};
+new IntersectionObserver(([entry])=>{
+ const bar=$('#detail-bar'),show=!entry.isIntersecting&&$('#detail').open&&matchMedia('(max-width: 760px)').matches;
+ bar.classList.toggle('visible',show);bar.inert=!show;
+},{root:$('#detail'),rootMargin:'-64px 0px 0px 0px'}).observe($('#hero'));
+
+// Cards saved under the old badge rule (Super/Hyper only) are recalculated once, in the background.
+async function refreshCardPreviews(){
+ for(const card of cards.slice()){
+  if(card.previewVersion===PREVIEW_VERSION||!card.confirmed||!card.iv?.every(Number.isInteger))continue;
+  const p=db.pokemon.find(x=>x.id===card.species),trainer=Number(card.trainer)||Number($('#trainer').value);
+  if(!p||!Number.isInteger(trainer)||trainer<1||trainer>80)continue;
+  try{
+   const result=await calculate({mode:'preview',p,iv:card.iv,trainer,observed:card.observed,shadow:card.shadow,purified:card.purified,lucky:card.lucky});
+   // Skip cards the user changed or deleted while this was running.
+   if(cards.find(c=>c.id===card.id)!==card)continue;
+   await save({...card,preview:result.previews,previewVersion:PREVIEW_VERSION});
+  }catch{/* keep the old badge; it is recalculated when the card is edited */}
+ }
+}
+void refreshCardPreviews();
+
+// Shadow under the collection controls only while they are stuck to the top of the screen.
+let stuckFrame=0;
+function updateCollectionStuck(){
+ stuckFrame=0;
+ const section=$('.collection'),bar=matchMedia('(max-width: 760px)').matches?$('.sectionhead .actions'):$('.sectionhead');
+ section.classList.toggle('is-stuck',bar.getBoundingClientRect().top<=0.5&&section.getBoundingClientRect().bottom>bar.offsetHeight+1);
+}
+addEventListener('scroll',()=>{if(!stuckFrame)stuckFrame=requestAnimationFrame(updateCollectionStuck)},{passive:true});
+addEventListener('resize',updateCollectionStuck);

@@ -71,10 +71,15 @@ export function readObservation(db,text,iv,trainer,{species,cp:knownCP,hp:knownH
  const lines=new Set(text.split(/[\r\n]+/).flatMap(line=>[
   normalizeName(line),...line.split(/\s+/).map(normalizeName)
  ]).filter(Boolean));
- const family=p=>p.name.split(' (')[0];
- const matches=db.pokemon.filter(p=>[p.name,p.englishName,family(p)].some(name=>name&&lines.has(normalizeName(name))));
- const explicitForms=matches.filter(p=>p.name!==family(p)&&lines.has(normalizeName(p.name)));
- const possible=species?[species]:explicitForms.length===1?explicitForms:matches;
+ const family=p=>p.name.split(' (')[0],englishFamily=p=>(p.englishName||'').split(' (')[0];
+ // Mega and primal forms are temporary battle states that the game names on screen ("메가다크펫",
+ // "원시가이오가"). Without that word they are left out, so "다크펫" alone is not a form question.
+ const flat=normalizeName(text);
+ const announced=p=>p.mega&&[family(p),englishFamily(p)].some(base=>base&&['메가','원시','mega','primal'].some(word=>flat.includes(normalizeName(word+base))));
+ const matches=db.pokemon.filter(p=>[p.name,p.englishName,family(p)].some(name=>name&&lines.has(normalizeName(name)))||announced(p));
+ const everyday=matches.filter(p=>!p.mega||announced(p)),pool=everyday.length?everyday:matches;
+ const explicitForms=pool.filter(p=>p.name!==family(p)&&lines.has(normalizeName(p.name)));
+ const possible=species?[species]:explicitForms.length===1?explicitForms:pool;
  const cp=knownCP??readCPDigits(cpText);
  const canCheck=iv&&cp&&Number.isInteger(trainer)&&trainer>=1&&trainer<=80;
  const fits=(p,values)=>canCheck&&inferLevel(db,p,values,trainer,{cp,hp},state).levels.length>0;
@@ -87,6 +92,12 @@ export function readObservation(db,text,iv,trainer,{species,cp:knownCP,hp:knownH
    return values.every(value=>value>=0&&value<=15)&&fits(p,values);
   }))));
   if(nearby.length===1)pokemon=nearby[0];
+ }
+ // A temporary form left out above still wins when both CP and HP fit it and nothing else.
+ // CP alone is not enough: a misread IV can match a mega form's CP by coincidence.
+ if(!species&&canCheck&&hp&&!consistent.length&&!(pokemon&&fits(pokemon,iv))){
+  const temporary=matches.filter(p=>!possible.includes(p)&&fits(p,iv));
+  if(temporary.length===1)pokemon=temporary[0];
  }
  const names=new Set(possible.map(family));
  return {pokemon,name:pokemon?.name||(names.size===1?[...names][0]:null),observed:{cp,hp},verified:!!pokemon&&!!fits(pokemon,iv)};

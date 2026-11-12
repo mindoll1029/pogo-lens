@@ -4,8 +4,12 @@ export const MODEL='neutral-benchmark-v2';
 export const tierFromPercent=p=>p>=95?'S':p>=85?'A':p>=75?'B':p>=65?'C':p>=50?'D':p>=35?'E':'F';
 export const purify=iv=>iv.map(x=>Math.min(15,x+2));
 export function descendants(db,p){const out=[],seen=new Set();function visit(q){if(!q||q.mega||seen.has(q.id))return;seen.add(q.id);out.push(q);for(const id of q.evolutions||[])visit(db.pokemon.find(x=>x.id===id))}visit(p);return out;}
-export function candidates(db,p,iv,max,shadow,cpFloor=.9,currentLevel=1){const result=[];for(const q of descendants(db,p)){for(const state of shadow?['shadow','purified']:['normal']){const values=state==='purified'?purify(iv):iv;for(const cap of [1500,2500]){const s=league(db,q,values,cap,max);if(!s||s.level<Math.max(currentLevel,state==='purified'?25:1))continue;const maximum=stats(db,q,[15,15,15],max).cp;result.push({species:q.id,name:q.name,state,iv:values,cap,...s,lowCP:maximum<cap*cpFloor,maximumCP:maximum});}}}return result.sort((a,b)=>Number(a.lowCP)-Number(b.lowCP)||b.percentile-a.percentile||b.percent-a.percent||a.name.localeCompare(b.name));}
-export function previews(rows,threshold=90){const bests=[1500,2500].map(cap=>rows.find(r=>r.cap===cap)).filter(Boolean),qualified=bests.filter(r=>r.percentile>=threshold);return qualified.length>=2?qualified:bests.length?[...bests].sort((a,b)=>Number(a.lowCP)-Number(b.lowCP)||b.percentile-a.percentile).slice(0,1):[];}
+export function candidates(db,p,iv,max,shadow,cpFloor=.9,currentLevel=1){const result=[];for(const q of descendants(db,p)){for(const state of shadow?['shadow','purified']:['normal']){const values=state==='purified'?purify(iv):iv;for(const cap of [1500,2500,Infinity]){const s=league(db,q,values,cap,max);if(!s||s.level<Math.max(currentLevel,state==='purified'?25:1))continue;const maximum=stats(db,q,[15,15,15],max).cp;result.push({species:q.id,name:q.name,state,iv:values,cap,...s,lowCP:cap===Infinity?maximum<=2500:maximum<cap*cpFloor,maximumCP:maximum});}}}return result.sort((a,b)=>Number(a.lowCP)-Number(b.lowCP)||b.percentile-a.percentile||b.percent-a.percent||a.name.localeCompare(b.name));}
+// Card preview: the single league with the highest rank percentile. Leagues a candidate cannot realistically
+// reach (max CP under the cpFloor share of the cap; for Master, never above the Hyper cap) rank after the rest,
+// and equal percentiles prefer the lower league.
+const leagueOrder=cap=>cap===1500?0:cap===2500?1:2;
+export function previews(rows){return rows.slice().sort((a,b)=>Number(a.lowCP)-Number(b.lowCP)||b.percentile-a.percentile||leagueOrder(a.cap)-leagueOrder(b.cap)||(b.percent||0)-(a.percent||0)).slice(0,1);}
 
 // Explicit local benchmark; Poke Genie's proprietary simulator is not available.
 // Neutral type interactions, 180 s, boss hit every 2 s, 10 s relobby,

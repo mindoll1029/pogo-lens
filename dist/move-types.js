@@ -1,3 +1,5 @@
 const types={normal:['노말','#9099a1','●'],fire:['불꽃','#e56f32','♨'],water:['물','#4f93d1','◕'],electric:['전기','#c9a91c','ϟ'],grass:['풀','#4a9d54','♣'],ice:['얼음','#55a6a0','❄'],fighting:['격투','#b74d59','✦'],poison:['독','#a362b8','◆'],ground:['땅','#bd7950','▲'],flying:['비행','#7b91c4','➤'],psychic:['에스퍼','#da687c','◎'],bug:['벌레','#8f9f36','✺'],rock:['바위','#a39468','⬟'],ghost:['고스트','#6370ad','◉'],dragon:['드래곤','#4d70b7','✧'],dark:['악','#626171','☾'],steel:['강철','#548a99','⬢'],fairy:['페어리','#c77fbb','✿']};
 export function typeIcon(type){const [name,color,symbol]=types[type]||types.normal;const icon=document.createElement('span');icon.className='move-type-icon';icon.style.backgroundColor=color;icon.textContent=symbol;icon.title=name+' 타입';icon.setAttribute('role','img');icon.setAttribute('aria-label',name+' 타입');return icon;}
 export function moveLabel(move){const label=document.createElement('span');label.className='move-name';label.append(typeIcon(move.type),move.name);return label;}
+export function typeColor(type){return (types[type]||types.normal)[1];}
+export function typeName(type){return (types[type]||types.normal)[0];}

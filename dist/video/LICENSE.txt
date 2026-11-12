@@ -1,0 +1,13 @@
+ffmpeg-core.js / ffmpeg-core.wasm
+@ffmpeg/core 0.12.10 (single-thread build) from ffmpeg.wasm
+https://github.com/ffmpegwasm/ffmpeg.wasm
+
+License: GPL-2.0-or-later. The build includes FFmpeg (https://ffmpeg.org, source:
+https://github.com/FFmpeg/FFmpeg) and x264 (https://www.videolan.org/developers/x264.html),
+both distributed under the GNU General Public License version 2 or later.
+Full license text: https://www.gnu.org/licenses/old-licenses/gpl-2.0.html
+Corresponding source for this build: https://github.com/ffmpegwasm/ffmpeg.wasm/tree/v0.12.10
+(npm package @ffmpeg/core@0.12.10).
+
+GO Lens loads these files only when the browser cannot decode a selected video natively,
+and runs them on the user's own device to convert that video to H.264 for analysis.

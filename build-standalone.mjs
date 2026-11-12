@@ -1,7 +1,7 @@
 import {readFile,writeFile} from 'node:fs/promises';
 const read=p=>readFile(new URL(p,import.meta.url),'utf8');
 const strip=s=>s.replace(/^import .*?;\r?\n/gm,'').replace(/export ((?:async )?function|const|let)/g,'$1');
-const [html,cssSource,app,vision,viewSource,engine,ratings,worker,data,observation,growth,frameOcr]=await Promise.all(['dist/index.html','dist/style.css','dist/app.js','dist/vision.js','dist/result-view.js','dist/engine.js','dist/ratings.js','dist/worker.js','dist/data.json','dist/observation.js','dist/growth.js','dist/frame-ocr.js'].map(read));
+const [html,cssSource,app,vision,viewSource,engine,ratings,worker,data,observation,growth,frameOcr,videoConvert]=await Promise.all(['dist/index.html','dist/style.css','dist/app.js','dist/vision.js','dist/result-view.js','dist/engine.js','dist/ratings.js','dist/worker.js','dist/data.json','dist/observation.js','dist/growth.js','dist/frame-ocr.js','dist/video-convert.js'].map(read));
 let view=viewSource;
 for(const badge of ['great','ultra','master']){
  const path='badges/'+badge+'.png';
@@ -15,6 +15,7 @@ if(dbStart<0||dbEnd<0)throw Error('Data import anchor missing');
 let main=app.slice(0,dbStart)+'const db='+data+';'+app.slice(dbEnd);
 main=strip(main).replace("new Worker('worker.js',{type:'module'})",`new Worker(URL.createObjectURL(new Blob([${JSON.stringify(workerCode)}],{type:'text/javascript'})))`);
 const moveTypes=await read('dist/move-types.js');
-const script=`${strip(moveTypes)}\nconst {detect,signature,distance,sameAppraisal,sameVideoPokemon,fullBarCorrection}=(()=>{${strip(vision)};return {detect,signature,distance,sameAppraisal,sameVideoPokemon,fullBarCorrection}})();\nconst {renderResults,leagueBadge}=(()=>{${strip(view)};return {renderResults,leagueBadge}})();\nconst {legalMoves,trainerCap,inferLevel,recognizeCP,digitTemplates,applyGrowth,resetGrowth,evolutionTargets,recognizeFrame,formAppearance,prepareFrameReader}=(()=>{${strip(engine)}\n${strip(observation)}\n${strip(growth)}\n${strip(frameOcr).replace('async function recognizeFrame','async function recognizeFrame')};return {legalMoves,trainerCap,inferLevel,recognizeCP,digitTemplates,applyGrowth,resetGrowth,evolutionTargets,recognizeFrame,formAppearance,prepareFrameReader}})();\n${main}`;
+const script=`${strip(moveTypes)}\nconst {detect,signature,distance,sameAppraisal,sameVideoPokemon,fullBarCorrection}=(()=>{${strip(vision)};return {detect,signature,distance,sameAppraisal,sameVideoPokemon,fullBarCorrection}})();\nconst {createConverter}=(()=>{${strip(videoConvert)};return {createConverter}})();
+const {renderResults,leagueBadge}=(()=>{${strip(view)};return {renderResults,leagueBadge}})();\nconst {legalMoves,trainerCap,inferLevel,recognizeCP,digitTemplates,applyGrowth,resetGrowth,evolutionTargets,recognizeFrame,formAppearance,prepareFrameReader}=(()=>{${strip(engine)}\n${strip(observation)}\n${strip(growth)}\n${strip(frameOcr).replace('async function recognizeFrame','async function recognizeFrame')};return {legalMoves,trainerCap,inferLevel,recognizeCP,digitTemplates,applyGrowth,resetGrowth,evolutionTargets,recognizeFrame,formAppearance,prepareFrameReader}})();\n${main}`;
 const output=html.replace('<link rel="stylesheet" href="style.css">',`<style>${css}</style>`).replace('<script type="module" src="app.js"></script>',`<script type="module">${script.replaceAll('</script','<\\/script')}</script>`);
 await writeFile(new URL('../go-lens-offline.html',import.meta.url),output);console.log('Created go-lens-offline.html');

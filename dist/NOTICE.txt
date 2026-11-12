@@ -27,3 +27,6 @@ No official affiliation or endorsement.
 
 
 Korean species and move names are based on PokeAPI structured datasets (https://github.com/PokeAPI/pokeapi). GO form labels and GO-specific names are mapped separately. Pokemon names and trademarks belong to their respective owners.
+
+
+Video conversion fallback (dist/video/ffmpeg-core.js, ffmpeg-core.wasm): @ffmpeg/core 0.12.10 from ffmpeg.wasm (https://github.com/ffmpegwasm/ffmpeg.wasm), GPL-2.0-or-later, including FFmpeg and x264. See video/LICENSE.txt for source links.
