@@ -88,7 +88,9 @@ video { max-width: 100%; max-height: 440px; margin: var(--space-md) auto; border
 .danger { color: var(--color-danger); }
 dialog .danger, dialog .danger:not(:disabled):hover { color: var(--color-card-danger); }
 #count { font-variant-numeric: tabular-nums; margin-left: var(--space-xs); color: var(--color-muted); }
-.cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--gap-columns); }
+/* Up to three columns, each at least 16rem: below that the league badge squeezes "마스터리그" onto two lines,
+   so tablets around 768–900px get two columns. In rem, so larger text also drops to fewer, wider cards. */
+.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(max(16rem, calc((100% - 2 * var(--gap-columns)) / 3)), 1fr)); gap: var(--gap-columns); }
 .card { text-align: left; display: block; position: relative; min-width: 0; padding: 0; overflow: clip; color: var(--color-ink); background: var(--color-paper-2); border: 0; border-radius: var(--radius-card); }
 .card.is-selected::after { content: ''; position: absolute; inset: 0; border: 3px solid var(--color-focus); border-radius: inherit; pointer-events: none; }
 #calhelp:empty { display: none; }
