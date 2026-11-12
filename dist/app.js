@@ -44,7 +44,10 @@ function syncCollection(){
  $('#count').textContent=cards.length;
  $('#empty').hidden=cards.length>0;
  $('#select-cards').disabled=!cards.length||busy;
- $('#select-cards').textContent=selectingCards?'선택 취소':'카드 선택';
+ // On phones the idle label shortens to "선택"; the hidden word keeps the accessible name "카드 선택".
+ // The space is a no-break space: a flex item drops a trailing ordinary space.
+ if(selectingCards)$('#select-cards').textContent='선택 취소';
+ else{const word=document.createElement('span');word.className='narrow-hidden';word.textContent='카드 ';$('#select-cards').replaceChildren(word,'선택')}
  $('#delete-selected').hidden=!selectingCards;
  $('#delete-selected').disabled=!selectedCards.size||busy;
  $('#delete-selected').textContent='선택 삭제 ('+selectedCards.size+')';
@@ -704,6 +707,8 @@ $('#growth-reset').onclick=async()=>{if(!selected?.growthBase||saving)return;con
 const ivRatings=[[45,4,'완벽한 IV예요!'],[37,3,'멋진 IV예요!'],[30,2,'좋은 IV예요'],[23,1,'괜찮은 IV예요'],[0,0,'아쉬운 IV예요']];
 const swordIcon='<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14.5 17.5 3 6V3h3l11.5 11.5"/><path d="m13 19 6-6"/><path d="m16 16 4 4"/><path d="m19 21 2-2"/></svg>';
 const scrollMotion=()=>matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth';
+// Same query as the two-pane detail block in style.css: wide screens, and phones held sideways.
+const twoPaneDetail='(min-width: 761px), (orientation: landscape) and (min-width: 560px)';
 function scrollDetailTop(){$('#detail').scrollTop=0;$('#detail .detailbody').scrollTop=0}
 function setHeroImage(card){
  const shot=$('#hero-shot'),hero=$('#hero');
@@ -788,7 +793,7 @@ $('#jump-raid').onclick=()=>jumpTo('raid');
 $('#source-open').onclick=()=>{const panel=$('#source-panel');panel.open=true;panel.scrollIntoView({behavior:scrollMotion(),block:'start'})};
 $('#bar-close').onclick=()=>{if(!$('#detail-close').disabled)$('#detail').close()};
 new IntersectionObserver(([entry])=>{
- const bar=$('#detail-bar'),show=!entry.isIntersecting&&$('#detail').open&&matchMedia('(max-width: 760px)').matches;
+ const bar=$('#detail-bar'),show=!entry.isIntersecting&&$('#detail').open&&!matchMedia(twoPaneDetail).matches;
  bar.classList.toggle('visible',show);bar.inert=!show;
 },{root:$('#detail'),rootMargin:'-64px 0px 0px 0px'}).observe($('#hero'));
 

@@ -43,7 +43,7 @@ button:disabled, input:disabled, select:disabled, textarea:disabled { opacity: .
 button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, summary:focus-visible, canvas:focus-visible { outline: 3px solid var(--color-focus); outline-offset: 3px; }
 [hidden] { display: none !important; }
 header { max-width: var(--container); margin-inline: auto; padding: var(--space-lg) var(--gutter); min-height: 80px; display: flex; justify-content: space-between; align-items: center; gap: var(--space-lg); }
-.brand { display: flex; align-items: center; gap: var(--space-sm); font-size: var(--text-xl); font-weight: 800; text-decoration: none; min-width: 0; }
+.brand { display: flex; align-items: center; gap: var(--space-sm); min-height: 44px; font-size: var(--text-xl); font-weight: 800; text-decoration: none; min-width: 0; }
 .brand small { font-size: var(--text-sm); font-weight: 500; color: var(--color-muted); margin-left: var(--space-md); }
 .logo { width: 24px; height: 24px; border: 5px solid var(--color-ink); border-radius: 50%; flex-shrink: 0; }
 .private { color: var(--color-muted); font-size: var(--text-sm); white-space: nowrap; }
@@ -232,7 +232,7 @@ th { font-weight: 700; }
 }
 
 /* Compact appraisal information and main settings menu. */
-.header-tools{display:flex;align-items:center;gap:var(--space-md)}.menu-button{width:44px;padding:var(--space-sm)}.menu-lines{display:block;width:18px;height:14px;border-block:2px solid currentColor;position:relative}.menu-lines::after{content:"";position:absolute;inset-inline:0;top:4px;border-top:2px solid currentColor}#choose-species{color:var(--color-card-ink);border-color:var(--color-card-rule);margin-bottom:var(--space-md)}.small-dialog{width:min(440px,92%);padding:var(--space-lg)}.small-dialog h2{margin-bottom:var(--space-lg)}.small-dialog label{display:block;font-size:var(--text-sm);margin-bottom:var(--space-xs)}.small-dialog input,.small-dialog select{width:100%;min-height:44px;padding:var(--space-xs) var(--space-sm);margin-bottom:var(--space-md);border:2px solid var(--color-card-rule);border-radius:var(--radius-control);background:var(--color-card);color:var(--color-card-ink)}.dialog-actions{display:flex;justify-content:flex-end;gap:var(--space-sm);margin-top:var(--space-md)}.small-dialog .quiet{color:var(--color-card-ink);border-color:var(--color-card-rule)}#save-feedback,#settings-error{font-size:var(--text-sm);color:var(--color-card-danger)}
+.header-tools{display:flex;align-items:center;gap:var(--space-md)}.menu-button{width:44px;padding:var(--space-sm)}.menu-lines{display:block;width:18px;height:14px;border-block:2px solid currentColor;position:relative}.menu-lines::after{content:"";position:absolute;inset-inline:0;top:4px;border-top:2px solid currentColor}#choose-species{color:var(--color-card-ink);border-color:var(--color-card-rule);margin-bottom:var(--space-md)}.small-dialog{width:min(440px,92%);padding:var(--space-lg)}.small-dialog h2{margin-bottom:var(--space-lg)}.small-dialog label{display:block;font-size:var(--text-sm);margin-bottom:var(--space-xs)}.small-dialog input,.small-dialog select{width:100%;min-height:44px;font-size:var(--text-md);padding:var(--space-xs) var(--space-sm);margin-bottom:var(--space-md);border:2px solid var(--color-card-rule);border-radius:var(--radius-control);background:var(--color-card);color:var(--color-card-ink)}.dialog-actions{display:flex;justify-content:flex-end;gap:var(--space-sm);margin-top:var(--space-md)}.small-dialog .quiet{color:var(--color-card-ink);border-color:var(--color-card-rule)}#save-feedback,#settings-error{font-size:var(--text-sm);color:var(--color-card-danger)}
 
 #growth-summary{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:var(--space-sm);padding-block:var(--space-sm);border-bottom:1px solid var(--color-card-rule);margin-bottom:var(--space-md);font-size:var(--text-sm)}#growth-summary .quiet{color:var(--color-card-ink);border-color:var(--color-card-rule)}#growth-error{color:var(--color-card-danger)}#detail:not(.editing) label:has(#iv-confirm){display:none!important}
 /* Show CP through the HP value on appraisal screens. */
@@ -282,8 +282,8 @@ th { font-weight: 700; }
 .hero-frame { position: relative; width: 100%; max-width: 32rem; aspect-ratio: calc(var(--shot-ratio, 0.5) / 0.39); overflow: hidden; }
 .hero-shot { width: 100%; height: auto; transform: translateY(-4.5%); }
 .hero-tools { position: absolute; top: var(--space-md); z-index: 3; display: grid; gap: var(--space-sm); }
-.hero-left { left: var(--space-sm); }
-.hero-right { right: var(--space-sm); }
+.hero-left { left: var(--space-sm); justify-items: start; }
+.hero-right { right: var(--space-sm); justify-items: end; }
 .hero-tools form { display: contents; }
 .hero-level { position: absolute; left: var(--space-md); bottom: calc(var(--sheet-overlap) + var(--space-sm)); z-index: 3; padding: 2px 10px; border-radius: 8px; background: oklch(99% 0.003 90 / 0.94); color: var(--sheet-ink); font-size: var(--text-sm); font-weight: 700; font-variant-numeric: tabular-nums; box-shadow: 0 4px 12px -6px oklch(12% 0.03 250 / 0.7); }
 
@@ -293,6 +293,8 @@ th { font-weight: 700; }
 #detail .round-button svg.filled { fill: currentColor; stroke: none; }
 #detail .round-button:active { transform: scale(0.94); }
 #detail .round-button:disabled { opacity: 0.5; background: var(--button-face); color: var(--tone, var(--tone-neutral)); }
+/* The one text label: a circle at normal size, a pill that grows sideways when the reader enlarges text. */
+#detail #jump-pvp { width: auto; min-width: 50px; padding-inline: 6px; border-radius: var(--radius-pill); white-space: nowrap; }
 #detail .tone-neutral { --tone: var(--tone-neutral); color: var(--sheet-ink); }
 #detail .tone-red { --tone: var(--tone-red); }
 #detail .tone-dark { --tone: var(--tone-dark); }
@@ -325,7 +327,8 @@ th { font-weight: 700; }
 .iv-summary[data-rating="2"] { --rating: oklch(51% 0.12 235); }
 .iv-summary[data-rating="1"] { --rating: oklch(53% 0.11 70); }
 .iv-summary[data-rating="0"], .iv-summary[data-rating="unknown"] { --rating: oklch(50% 0.02 250); }
-.iv-ring { position: relative; flex: none; width: 96px; height: 96px; }
+/* The ring grows with enlarged text so the percentage stays inside it. */
+.iv-ring { position: relative; flex: none; width: clamp(96px, 6rem, 144px); height: clamp(96px, 6rem, 144px); }
 .iv-ring svg { width: 100%; height: 100%; transform: rotate(-90deg); }
 .ring-track, .ring-value { fill: none; stroke-width: 11; }
 .ring-track { stroke: var(--sheet-track); }
@@ -337,7 +340,8 @@ th { font-weight: 700; }
 #detail .ivinputs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-xs); margin-top: var(--space-lg); text-align: center; }
 #detail .ivinputs label { display: grid; justify-items: center; align-content: start; gap: var(--space-3xs); font-size: var(--text-md); color: var(--sheet-ink); }
 .iv-name { font-weight: 700; color: var(--sheet-muted); white-space: nowrap; }
-.iv-figure { display: inline-flex; align-items: baseline; gap: 3px; white-space: nowrap; }
+/* With enlarged text, "/15" drops under the value instead of running into the next column. */
+.iv-figure { display: inline-flex; flex-wrap: wrap; justify-content: center; align-items: baseline; gap: 0 3px; white-space: nowrap; }
 .iv-figure output { font-size: clamp(2.1rem, 9vw, 2.6rem); font-weight: 600; line-height: 1.15; letter-spacing: -0.03em; color: var(--sheet-ink); font-variant-numeric: tabular-nums; }
 .iv-figure small { font-size: var(--text-md); font-weight: 600; color: var(--sheet-muted); }
 #detail:not(.editing) .ivinputs input { display: none; }
@@ -370,7 +374,7 @@ th { font-weight: 700; }
 .divider { display: flex; align-items: center; gap: var(--space-sm); margin-bottom: var(--space-md); }
 .divider::before, .divider::after { content: ""; flex: 1; border-top: 1.5px solid var(--sheet-rule); }
 .divider-title { max-width: none; font-size: var(--text-sm); font-weight: 800; line-height: 1.4; letter-spacing: 0.02em; color: var(--sheet-muted); }
-#detail .info-button { display: grid; place-items: center; width: 40px; height: 40px; min-height: 0; margin-inline: -8px -4px; padding: 0; border: 0; border-radius: 50%; background: var(--color-transparent); color: var(--sheet-muted); }
+#detail .info-button { display: grid; place-items: center; width: 44px; height: 44px; min-height: 0; margin-inline: -10px -6px; padding: 0; border: 0; border-radius: 50%; background: var(--color-transparent); color: var(--sheet-muted); }
 #detail .info-button svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
 #detail .info-button[aria-expanded="true"] { color: var(--tone-purple); }
 .section-note { max-width: 46ch; margin: calc(var(--space-xs) * -1) auto var(--space-md); text-align: center; }
@@ -419,7 +423,8 @@ th { font-weight: 700; }
   #detail .move-pill { padding-inline: 14px; font-size: 0.95rem; }
   #detail .tier-pill { padding-inline: 8px 10px; }
 }
-@media (min-width: 761px) {
+/* Two panes on wide screens and on phones held sideways (twoPaneDetail in app.js matches this query). */
+@media (min-width: 761px), (orientation: landscape) and (min-width: 560px) {
   #detail { --sheet-overlap: 0px; width: min(1080px, 94vw); height: min(880px, 92dvh); margin: auto; border-radius: var(--radius-card); overflow: hidden; }
   #detail[open] { display: grid; grid-template-columns: clamp(300px, 38%, 420px) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
   .detail-bar { display: none; }
@@ -431,6 +436,11 @@ th { font-weight: 700; }
   #detail .detailbody { min-height: 0; margin-top: 0; padding: var(--space-xl) clamp(var(--space-lg), 4vw, var(--space-2xl)) var(--space-2xl); border-radius: 0; overflow-y: auto; overscroll-behavior: contain; }
   #detail .detailbody > :not(button), #detail .editor > :not(button), #detail #analyze { width: 100%; max-width: 40rem; margin-inline: auto; }
   .result-section, #detail #source-panel { scroll-margin-top: var(--space-lg); }
+}
+/* A sideways phone has no height to spare for the floating frame: the sheet fills the screen. */
+@media (orientation: landscape) and (min-width: 560px) and (max-height: 520px) {
+  #detail { width: 100%; height: 100vh; height: 100dvh; border-radius: 0; }
+  #detail .detailbody { padding-block: var(--space-lg) var(--space-xl); }
 }
 
 /* Card sorting and custom order editing. */
@@ -460,6 +470,32 @@ body.dragging-cards { -webkit-user-select: none; user-select: none; cursor: grab
 @media (max-width: 540px) {
   #cards .card-handle { top: 50%; margin-top: -22px; }
   .cards.reordering .cardbody { padding-right: 60px; }
+}
+/* Phones held sideways: two columns of the side-by-side phone card, so a whole card fits the short screen. */
+@media (orientation: landscape) and (max-height: 520px) and (min-width: 541px) {
+  .cards:not(.list-view) { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .card { display: grid; grid-template-columns: minmax(0, .6fr) minmax(0, 1.4fr); }
+  .cardbody { grid-column: 2; padding-inline: var(--space-xs) var(--space-sm); }
+  #cards .card-handle { top: 50%; margin-top: -22px; }
+  .cards.reordering .cardbody { padding-right: 60px; }
+}
+
+/* iOS zooms the page into any form field set below 16px; on touch screens the sort menu uses 16px. */
+@media (pointer: coarse) {
+  .sort-control select { font-size: var(--text-md); }
+}
+/* Phone toolbar fits one row from 360px: the view modes show as icons (their names stay for screen readers)
+   and "카드 선택" reads "선택". Selection and order editing add buttons and may wrap to a second row. */
+.view-icon { display: none; width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+@media (max-width: 540px) {
+  .sectionhead .actions { gap: 6px; }
+  .sort-control svg { left: 11px; }
+  .sort-control::after { right: 12px; }
+  .sort-control select { padding: 0 28px 0 36px; }
+  .view-switch button { width: 44px; padding: 0; }
+  .view-icon { display: block; }
+  .view-label, .narrow-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  #select-cards { padding-inline: var(--space-sm); }
 }
 
 /* Collection controls follow the scroll. Desktop: the one-row title bar sticks.
