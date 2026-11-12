@@ -238,21 +238,12 @@ th { font-weight: 700; }
 .card-shot-crop .card-shot { display:block; width:100%; height:auto; transform:translateY(-4.5%); }
 .view-switch { display:flex; gap:0.2rem; }
 .view-switch button[aria-pressed="true"] { background:var(--color-ink); color:var(--color-paper); }
-.cards.list-view { grid-template-columns:minmax(0,1fr); }
-.cards.list-view .card { display:grid; grid-template-columns:clamp(5rem, 14vw, 7rem) minmax(0,1fr); align-items:start; }
-.cards.list-view .cardbody { grid-template-columns:minmax(0,1fr) auto; align-self:center; align-items:baseline; }
-.cards.list-view .ivline { border:0; padding:0; gap:var(--space-sm); justify-content:flex-end; }
-.cards.list-view .cardpreviews { grid-column:1/-1; }
 .move-select { display:flex; align-items:center; gap:0.5rem; }
 .move-select select { min-width:0; flex:1; }
 .move-select > span:empty { display:none; }
 .move-type-icon { display:inline-flex; width:1.45rem; height:1.45rem; border-radius:50%; background-color:var(--type); color:var(--type-ink); align-items:center; justify-content:center; font-size:1rem; vertical-align:middle; flex-shrink:0; }
 .move-name { display:inline-flex; align-items:center; gap:0.35rem; }
 .charged-fields { min-width:0; display:grid; gap:0.75rem; }
-@media (max-width:600px) {
-  .cards.list-view .cardbody { grid-template-columns:minmax(0,1fr); }
-  .cards.list-view .ivline { justify-content:flex-start; }
-}
 
 /* Detail sheet · mobile first: screenshot hero with round tools, then IV summary, moves and results. */
 #detail {
@@ -523,3 +514,46 @@ body.dragging-cards { -webkit-user-select: none; user-select: none; cursor: grab
 /* A stored thumbnail is already cropped to the card window; show it as is. */
 .card-shot-crop.is-thumb { aspect-ratio: auto; }
 .card-shot-crop.is-thumb .card-shot { transform: none; }
+
+/* List view: one compact row per card, so a phone screen holds about twice as many cards as the card view.
+   Phone: thumbnail | name and CP over the IV line | best league icon and score (with its basis under it),
+   the score in a fixed-width column so icons line up row to row. Wide screens: the same row as table columns. */
+.cards.list-view { grid-template-columns: minmax(0, 1fr); gap: var(--space-xs); }
+.cards.list-view .card { display: grid; grid-template-columns: 52px minmax(0, 1fr); align-items: center; gap: 10px; padding: var(--space-xs); border-radius: calc(var(--radius-control) + var(--space-xs)); }
+.cards.list-view .card-shot-crop { align-self: center; aspect-ratio: 1; border-radius: var(--radius-control); }
+/* The thumbnail runs from CP to HP; zoom toward the Pokémon so it reads at this size. */
+.cards.list-view .card-shot-crop.is-thumb .card-shot { width: 140%; max-width: none; margin: -12% 0 0 -20%; }
+.cards.list-view .cardbody { grid-column: 2; grid-template-columns: minmax(0, 1fr) 6rem; grid-template-areas: "head badge" "iv badge"; align-items: center; gap: 2px 10px; padding: 0 var(--space-2xs) 0 0; }
+.cards.list-view .cardheading { grid-area: head; }
+.cards.list-view .cardbody h3 { font-size: var(--text-md); }
+.cards.list-view .ivline { grid-area: iv; justify-content: flex-start; flex-wrap: wrap; gap: 0 var(--space-xs); border: 0; padding: 0; }
+.cards.list-view .cardpreviews { grid-area: badge; display: block; }
+@media (max-width: 1023px) {
+  .cards.list-view .card { container-type: inline-size; }
+  /* No league score to show: the name and IV take the whole width. */
+  .cards.list-view .cardbody:not(:has(.cardpreviews)) > * { grid-column: 1 / -1; }
+  .cards.list-view .iv-suffix, .cards.list-view .league-label > span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .cards.list-view .cardpreviews .league-badge { grid-template-columns: auto minmax(0, 1fr); grid-template-areas: "icon percent" "basis basis"; gap: 0 6px; padding: 0; border: 0; }
+  .cards.list-view .cardpreviews img.league-icon { grid-area: icon; width: 1.4rem; height: 1.4rem; }
+  .cards.list-view .league-label { display: contents; }
+  .cards.list-view .league-label > small { grid-area: basis; justify-self: end; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-xs); color: var(--color-muted); }
+  .cards.list-view .league-percent { grid-area: percent; justify-self: end; font-size: var(--text-md); }
+  /* While the drag handle holds the right edge, the league moves to a third line instead of squeezing the name. */
+  .cards.reordering.list-view .cardbody { grid-template-columns: minmax(0, 1fr); grid-template-areas: "head" "iv" "badge"; }
+  .cards.reordering.list-view .cardpreviews .league-badge { grid-template-columns: auto auto minmax(0, auto); grid-template-areas: "icon percent basis"; justify-content: start; }
+  .cards.reordering.list-view .league-label > small { justify-self: start; }
+}
+/* Same third-line layout when the row is too narrow for the score column (320px phones). The query measures the
+   card's content box: thumbnail 52 + gap 10 + name/CP about 124 + gap 10 + score column 96 + padding 4 = 296. */
+@container (max-width: 297px) {
+  .cards.list-view .cardbody { grid-template-columns: minmax(0, 1fr); grid-template-areas: "head" "iv" "badge"; }
+  .cards.list-view .cardpreviews .league-badge { grid-template-columns: auto auto minmax(0, auto); grid-template-areas: "icon percent basis"; justify-content: start; }
+  .cards.list-view .league-label > small { justify-self: start; }
+}
+/* Wide screens: one line per card, read like a table (name · IV · league badge in full). */
+@media (min-width: 1024px) {
+  .cards.list-view .card { grid-template-columns: 64px minmax(0, 1fr); }
+  .cards.list-view .cardbody { grid-template-columns: minmax(0, 1fr) 12rem 16rem; grid-template-areas: "head iv badge"; gap: var(--space-lg); }
+  .cards.list-view .ivline { justify-content: space-between; }
+  .cards.list-view .cardpreviews .league-badge { padding: 0; border: 0; }
+}

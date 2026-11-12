@@ -143,7 +143,9 @@ function renderCard(c){
  if(c.iv?.every(Number.isInteger)){
   const percent=c.iv.reduce((sum,value)=>sum+value,0)/45*100;
   // The space keeps "14" and "80.0%" apart when screen readers join the text (flex hides it visually).
-  line.append(el('strong',null,c.iv.join(' / ')),' ',el('small',null,percent.toFixed(1)+'% IV'));
+  // " IV" is its own span so the compact phone list row can hide it visually (screen readers still hear it).
+  const share=el('small',null,percent.toFixed(1)+'%');share.append(el('span','iv-suffix',' IV'));
+  line.append(el('strong',null,c.iv.join(' / ')),' ',share);
  }else line.append(el('strong',null,'IV 확인 필요'));
  body.append(line);
  const visiblePreviews=c.preview?.filter(x=>!c.observed?.cp||c.observed.cp<=x.cap);
