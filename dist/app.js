@@ -366,7 +366,33 @@ async function recoverObservation(card){
  }
  return updated;
 }
-async function addFrame(source,time=0,stableFrame,scene){
+// CP is white text over a moving background, so a single frame can misread it or miss it. While the same
+// appraisal stays on screen, read other frames and keep the first reading whose CP fits the species and IV.
+async function readCardFromFrames(iv,trainer,detected,alternates){
+ const references=appearanceReferences();
+ let reading=await recognizeFrame(canvas,db,iv,trainer,{references});
+ if(!alternates||!iv||reading.verified)return reading;
+ const reads=[reading];
+ for(const t of alternates.times){
+  if(cancel||t<0||t>=alternates.video.duration)continue;
+  const other=await readVideoFrame(alternates.video,t);
+  if(!sameAppraisal(detected,other.detected))continue;
+  // Once the species is known, other frames only need the small CP area, not the full name OCR.
+  const known=reads.find(r=>r.pokemon)?.pokemon;
+  const next=await recognizeFrame(canvas,db,iv,trainer,known?{species:known,cpOnly:true}:{references});
+  if(next.verified)return next;
+  reads.push(next);
+ }
+ // No frame fits. With a known species the CP could be checked and failed, so a one-off read is more likely
+ // an OCR slip than the real CP: keep it only when two frames read the same number (then the IV may be off).
+ const named=reads.find(r=>r.pokemon)||reads.find(r=>r.name)||reading;
+ if(!named.pokemon)return named;
+ const counts=new Map();
+ for(const r of reads)if(r.observed?.cp)counts.set(r.observed.cp,(counts.get(r.observed.cp)||0)+1);
+ const agreed=[...counts].find(([,n])=>n>=2)?.[0]??null;
+ return {...named,observed:{...named.observed,cp:agreed}};
+}
+async function addFrame(source,time=0,stableFrame,scene,alternates){
  const pixels=stableFrame?.pixels??frame(source),detected=stableFrame?.detected??detect(pixels,cal);
  const sig=signature(pixels);
  if(scene){
@@ -379,7 +405,7 @@ async function addFrame(source,time=0,stableFrame,scene){
  const trainer=Number($('#trainer').value);
  const card={id:crypto.randomUUID(),createdAt:Date.now(),image,time,iv,confidence:detected.confidence||'조사 화면을 확인하세요.',sig,confirmed:false};
  try{
-  const {pokemon,name,observed,verified}=await recognizeFrame(canvas,db,iv,trainer,{references:appearanceReferences()});
+  const {pokemon,name,observed,verified}=await readCardFromFrames(iv,trainer,detected,alternates);
   if(name)card.recognizedName=name;
   card.observed=observed;
   if(pokemon)card.species=pokemon.id;
@@ -415,20 +441,25 @@ async function readVideoFrame(video,time){
  const pixels=frame(video);
  return {pixels,detected:detect(pixels)};
 }
+// The bars animate when the next Pokémon slides in, so a reading counts only once two frames 0.2 s apart agree.
+// If this sample lands mid-animation, step forward (up to the next 1 s sample) to find the stable window;
+// a screen held for well under a second would otherwise be skipped between two samples.
 async function scanVideoFrame(video,time,scene,offset=0){
- const candidate=await readVideoFrame(video,time);
+ const step=.2,limit=Math.min(video.duration,time+1);
+ let last=await readVideoFrame(video,time),lastTime=time;
  // Loose color and calibration matches are useful for manual capture, but insufficient for automatic video import.
- if(cancel||!candidate.detected.tracks){scene.last=null;return false}
- const nextTime=time+.2;
- if(nextTime<video.duration){
-  const next=await readVideoFrame(video,nextTime);
+ if(cancel||!last.detected.tracks){scene.last=null;return false}
+ const extra=times=>({video,times});
+ if(time-step>=0){
+  const previous=await readVideoFrame(video,time-step);
   if(cancel)return false;
-  if(sameAppraisal(candidate.detected,next.detected))return addFrame(video,offset+nextTime,next,scene);
+  if(sameAppraisal(last.detected,previous.detected))return addFrame(video,offset+time,last,scene,extra([time-step,time+step]));
  }
- const previousTime=time-.2;
- if(previousTime>=0){
-  const previous=await readVideoFrame(video,previousTime);
-  if(!cancel&&sameAppraisal(candidate.detected,previous.detected))return addFrame(video,offset+time,candidate,scene);
+ for(let k=1;time+k*step<limit-1e-6&&!cancel;k++){
+  const t=time+k*step,next=await readVideoFrame(video,t);
+  if(!next.detected.tracks)break;
+  if(sameAppraisal(last.detected,next.detected))return addFrame(video,offset+t,next,scene,extra([lastTime,t+step]));
+  last=next;lastTime=t;
  }
  scene.last=null;
  return false;

@@ -117,6 +117,18 @@ export async function recognizeFrame(canvas,db,iv,trainer,known={}) {
  const appearance=known.references?.length?formAppearance(canvas):null;
  const worker=await prepareFrameReader();
  const read=async image=>(await worker.recognize(image,{tessedit_pageseg_mode:'11'})).data.text;
+ const readCropCP=async()=>{
+  const text=await read(crop(overview,.26,.025,.51,.12,2));
+  return readCPDigits(text)?text:read(crop(overview,.25,.025,.52,.26,1.6));
+ };
+ // Extra frames of a screen whose species is already known try the small CP area first; only when that
+ // does not give a fitting CP do they pay for the full overview OCR, which also finds CP in its text.
+ let cropText=null;
+ if(known.cpOnly&&known.species){
+  cropText=await readCropCP();
+  const quick=readObservation(db,'',iv,trainer,{...known,cpText:cropText});
+  if(quick.verified)return quick;
+ }
  let text=await read(overview);
  let result=readObservation(db,text,iv,trainer,known);
  if(!result.name&&!known.species){
@@ -124,9 +136,6 @@ export async function recognizeFrame(canvas,db,iv,trainer,known={}) {
  }
  const fromOverview=cpFromOverview(text);
  let cpText=fromOverview?String(fromOverview):'';
- if(!known.cp&&!fromOverview){
-  cpText=await read(crop(overview,.26,.025,.51,.12,2));
-  if(!readCPDigits(cpText))cpText=await read(crop(overview,.25,.025,.52,.26,1.6));
- }
+ if(!known.cp&&!fromOverview)cpText=cropText??await readCropCP();
  return readObservation(db,text,iv,trainer,{...known,cpText,appearance});
 }
