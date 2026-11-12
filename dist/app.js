@@ -51,8 +51,8 @@ function syncCollection(){
  $('#delete-selected').hidden=!selectingCards;
  $('#delete-selected').disabled=!selectedCards.size||busy;
  $('#delete-selected').textContent='선택 삭제 ('+selectedCards.size+')';
- $('#delete-all').hidden=!selectingCards;
- $('#delete-all').disabled=!cards.length||busy;
+ $('#select-all').hidden=!selectingCards;
+ $('#select-all').disabled=busy||!cards.length||cards.every(card=>selectedCards.has(card.id));
  $('#reorder-cards').hidden=sortMode!=='custom'||cards.length<2&&!reorderingCards;
  $('#reorder-cards').disabled=busy;
  $('#reorder-cards').textContent=reorderingCards?'완료':'순서 편집';
@@ -340,24 +340,22 @@ $('#select-cards').onclick=()=>{
  if(selectingCards)reorderingCards=false;
  render();
 };
-// Deletes every card and screenshot on this device after confirmation. Lives in selection mode with "선택 삭제".
-$('#delete-all').onclick=async()=>{
- if(busy||!cards.length)return;
- if(!confirm('카드 '+cards.length+'개와 스크린샷을 모두 삭제할까요? 삭제하면 되돌릴 수 없습니다.'))return;
- try{await transaction('readwrite',store=>store.clear())}
- catch{setInlineStatus('#collection-error','카드를 모두 삭제하지 못했습니다. 다시 시도하세요.');return}
- setInlineStatus('#collection-error','');
- cards=[];
- selectedCards.clear();
- selectingCards=false;
- saveCustomOrder([]);
- render();
- status('카드를 모두 삭제했습니다.');
+// Selects every card (selection mode only); deleting still goes through "선택 삭제" and its confirmation.
+$('#select-all').onclick=()=>{
+ if(busy||!selectingCards)return;
+ for(const card of cards)selectedCards.add(card.id);
+ for(const card of $('#cards').querySelectorAll('.card')){card.classList.add('is-selected');card.querySelector('.card-open')?.setAttribute('aria-pressed','true')}
+ // The button disables itself once everything is selected. Keep keyboard focus in the toolbar, on "선택 취소"
+ // rather than the delete button, so a second key press can't start a deletion.
+ if(document.activeElement===$('#select-all'))$('#select-cards').focus();
+ syncCollection();
+ $('#order-status').textContent='카드 '+cards.length+'개를 모두 선택했습니다.';
 };
 $('#delete-selected').onclick=async()=>{
  if(busy||!selectedCards.size)return;
  const ids=new Set(selectedCards);
- if(!confirm('선택한 카드 '+ids.size+'개를 삭제할까요?'))return;
+ const all=cards.every(card=>ids.has(card.id));
+ if(!confirm(all?'카드 '+ids.size+'개를 모두 삭제할까요? 삭제하면 되돌릴 수 없습니다.':'선택한 카드 '+ids.size+'개를 삭제할까요?'))return;
  try{
   await transaction('readwrite',store=>{
    let request;
@@ -370,6 +368,7 @@ $('#delete-selected').onclick=async()=>{
  }
  setInlineStatus('#collection-error','');
  cards=cards.filter(card=>!ids.has(card.id));
+ if(customOrder.length)saveCustomOrder(customOrder.filter(id=>!ids.has(id)));
  selectedCards.clear();
  selectingCards=false;
  render();
