@@ -479,11 +479,14 @@ body.dragging-cards { -webkit-user-select: none; user-select: none; cursor: grab
 @media (pointer: coarse) {
   .sort-control select { font-size: var(--text-md); }
 }
-/* Toolbar in two groups: how the list is shown (sort, view) and what to do with the cards (order editing,
-   selection). Wide screens keep both groups on one line; phones give each group its own row. */
+/* Toolbar in two rows: how the list is shown (sort, view), then what to do with the cards (order editing,
+   selection). Wide screens line both rows up on the right, under each other; phones start them at the left. */
 .action-row { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-xs); }
+.sectionhead .actions { flex-direction: column; align-items: flex-end; gap: var(--space-xs); }
+.sectionhead .action-row { justify-content: flex-end; }
 @media (max-width: 760px) {
-  .sectionhead .actions { flex-direction: column; align-items: flex-start; gap: 6px; }
+  .sectionhead .actions { align-items: flex-start; gap: 6px; }
+  .sectionhead .action-row { justify-content: flex-start; }
 }
 /* On phones the view modes show as icons (their names stay for screen readers). */
 .view-icon { display: none; width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
