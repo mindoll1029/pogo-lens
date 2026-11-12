@@ -4,8 +4,9 @@ const stateName=s=>s==='shadow'?'그림자':s==='purified'?'정화':'일반';
 const leagueName=cap=>cap===1500?'슈퍼리그':cap===2500?'하이퍼리그':'마스터리그';
 // Each badge path appears once so the standalone build can inline it.
 const leagueIcon=cap=>cap===1500?'badges/great.png':cap===2500?'badges/ultra.png':'badges/master.png';
-// Floor to one decimal so rank 2 never displays as 100.0%.
-const percentFloor=value=>(Math.floor(value*10)/10).toFixed(1)+'%';
+// Every league score shows two decimals, floored so rank 2 never displays as 100.00%.
+// The small epsilon keeps values like 99.98 (stored as 99.97999…) from flooring a step too far.
+const percentFloor=value=>(Math.floor(value*100+1e-6)/100).toFixed(2)+'%';
 export function leagueBadge(cap,name,percentile,sub=''){
  const row=el('div','league-badge'),icon=el('img','league-icon');
  icon.src=leagueIcon(cap);
@@ -13,7 +14,7 @@ export function leagueBadge(cap,name,percentile,sub=''){
  const label=el('span','league-label');
  label.append(el('span',null,name||leagueName(cap)));
  if(sub)label.append(el('small',null,sub));
- row.append(icon,label,el('strong','league-percent',percentile.toFixed(2)+'%'));
+ row.append(icon,label,el('strong','league-percent',percentFloor(percentile)));
  return row;
 }
 function metric(title,value,sub){const n=el('div','metric'),a=el('div');a.append(el('small',null,title),el('strong',null,value),el('small',null,sub));n.append(a);return n}

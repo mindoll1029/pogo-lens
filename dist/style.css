@@ -22,6 +22,9 @@
   --display-weight: 800; --tracking-display: -0.025em;
   --text-display: 2.5rem; --text-section: 1.728rem; --text-title: 1.2rem;
   --radius-card: 24px; --radius-control: 12px;
+  /* Shadows by role: a control raised off a surface, an open menu, a card being dragged, a bar that has stuck. */
+  --shadow-raised: 0 6px 16px -6px oklch(12% 0.03 250 / 0.6); --shadow-popover: 0 16px 32px -12px oklch(15% 0.04 250 / 0.6);
+  --shadow-lifted: 0 24px 40px -18px oklch(10% 0.04 160 / 0.75); --shadow-bar: 0 12px 20px -16px oklch(12% 0.05 160 / 0.9);
   /* Pokémon type fills for white text and glyphs: each keeps its type hue, with lightness lowered only as far as
      needed for at least 4.6:1 against --type-ink (fighting, dragon and dark already passed and are unchanged). */
   --type-ink: oklch(99% 0 0);
@@ -241,6 +244,7 @@ th { font-weight: 700; }
 .move-select { display:flex; align-items:center; gap:0.5rem; }
 .move-select select { min-width:0; flex:1; }
 .move-select > span:empty { display:none; }
+.move-type-icon svg { width:64%; height:64%; fill:none; stroke:currentColor; stroke-width:2.2; stroke-linecap:round; stroke-linejoin:round; }
 .move-type-icon { display:inline-flex; width:1.45rem; height:1.45rem; border-radius:50%; background-color:var(--type); color:var(--type-ink); align-items:center; justify-content:center; font-size:1rem; vertical-align:middle; flex-shrink:0; }
 .move-name { display:inline-flex; align-items:center; gap:0.35rem; }
 .charged-fields { min-width:0; display:grid; gap:0.75rem; }
@@ -259,7 +263,7 @@ th { font-weight: 700; }
 #detail .hero :focus-visible { outline-color: var(--button-face); }
 
 .detail-bar { position: sticky; top: 0; z-index: 6; height: 0; }
-.detail-bar-inner { position: absolute; inset: 0 0 auto; height: 60px; display: flex; align-items: center; gap: var(--space-sm); padding: 0 var(--space-sm) 0 var(--space-md); background: color-mix(in oklab, var(--sheet) 90%, transparent); -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); border-bottom: 1px solid var(--sheet-rule); box-shadow: 0 10px 20px -16px oklch(20% 0.04 160 / 0.7); opacity: 0; transform: translateY(-100%); transition: opacity var(--dur-short) var(--ease-out), transform var(--dur-short) var(--ease-out); }
+.detail-bar-inner { position: absolute; inset: 0 0 auto; height: 60px; display: flex; align-items: center; gap: var(--space-sm); padding: 0 var(--space-sm) 0 var(--space-md); background: color-mix(in oklab, var(--sheet) 90%, transparent); -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); border-bottom: 1px solid var(--sheet-rule); box-shadow: var(--shadow-bar); opacity: 0; transform: translateY(-100%); transition: opacity var(--dur-short) var(--ease-out), transform var(--dur-short) var(--ease-out); }
 .detail-bar.visible .detail-bar-inner { opacity: 1; transform: none; }
 #bar-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-md); font-weight: 800; color: var(--sheet-ink); }
 #detail .detail-bar .round-button { width: 44px; height: 44px; border-width: 2px; box-shadow: none; }
@@ -274,9 +278,9 @@ th { font-weight: 700; }
 .hero-left { left: var(--space-sm); justify-items: start; }
 .hero-right { right: var(--space-sm); justify-items: end; }
 .hero-tools form { display: contents; }
-.hero-level { position: absolute; left: var(--space-md); bottom: calc(var(--sheet-overlap) + var(--space-sm)); z-index: 3; padding: 2px 10px; border-radius: 8px; background: oklch(99% 0.003 90 / 0.94); color: var(--sheet-ink); font-size: var(--text-sm); font-weight: 700; font-variant-numeric: tabular-nums; box-shadow: 0 4px 12px -6px oklch(12% 0.03 250 / 0.7); }
+.hero-level { position: absolute; left: var(--space-md); bottom: calc(var(--sheet-overlap) + var(--space-sm)); z-index: 3; padding: 2px 10px; border-radius: 8px; background: oklch(99% 0.003 90 / 0.94); color: var(--sheet-ink); font-size: var(--text-sm); font-weight: 700; font-variant-numeric: tabular-nums; box-shadow: var(--shadow-raised); }
 
-#detail .round-button { position: relative; display: grid; place-items: center; width: 50px; height: 50px; min-height: 0; padding: 0; border: 3px solid var(--tone, var(--tone-neutral)); border-radius: 50%; background: var(--button-face); color: var(--tone, var(--tone-neutral)); font-size: 0.95rem; font-weight: 800; letter-spacing: -0.01em; line-height: 1; list-style: none; box-shadow: 0 6px 16px -6px oklch(12% 0.03 250 / 0.6); transition: transform var(--dur-micro) var(--ease-out), background-color var(--dur-micro) var(--ease-out); }
+#detail .round-button { position: relative; display: grid; place-items: center; width: 50px; height: 50px; min-height: 0; padding: 0; border: 3px solid var(--tone, var(--tone-neutral)); border-radius: 50%; background: var(--button-face); color: var(--tone, var(--tone-neutral)); font-size: 0.95rem; font-weight: 800; letter-spacing: -0.01em; line-height: 1; list-style: none; box-shadow: var(--shadow-raised); transition: transform var(--dur-micro) var(--ease-out), background-color var(--dur-micro) var(--ease-out); }
 #detail .round-button::-webkit-details-marker { display: none; }
 #detail .round-button svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
 #detail .round-button svg.filled { fill: currentColor; stroke: none; }
@@ -292,7 +296,7 @@ th { font-weight: 700; }
 #detail .tone-purple { --tone: var(--tone-purple); }
 #growth-menu { position: relative; margin: 0; }
 #growth-menu[open] > summary { background: color-mix(in oklab, var(--tone) 14%, var(--button-face)); }
-#detail .growth-actions { position: absolute; top: 0; right: calc(100% + var(--space-xs)); z-index: 4; display: grid; gap: var(--space-3xs); min-width: max-content; padding: var(--space-2xs); background: var(--sheet); border-radius: 14px; box-shadow: 0 16px 32px -12px oklch(15% 0.04 250 / 0.6); }
+#detail .growth-actions { position: absolute; top: 0; right: calc(100% + var(--space-xs)); z-index: 4; display: grid; gap: var(--space-3xs); min-width: max-content; padding: var(--space-2xs); background: var(--sheet); border-radius: 14px; box-shadow: var(--shadow-popover); }
 #detail .growth-actions .quiet { justify-content: flex-start; color: var(--sheet-ink); border-color: var(--color-transparent); }
 #detail.editing #jump-raid, #detail.editing #jump-pvp,
 #detail:not(:has(#result-raid)) #jump-raid, #detail:not(:has(#result-pvp)) #jump-pvp { display: none; }
@@ -443,10 +447,10 @@ th { font-weight: 700; }
 .cards { position: relative; }
 .card-slot { position: relative; display: grid; min-width: 0; }
 .cards.reordering .card { outline: 2px dashed var(--color-rule); outline-offset: -2px; cursor: default; }
-#cards .card-handle { position: absolute; top: var(--space-xs); right: var(--space-xs); z-index: 2; display: grid; place-items: center; width: 44px; height: 44px; min-height: 0; padding: 0; border: 0; border-radius: 50%; background: var(--color-card); color: var(--color-card-ink); box-shadow: 0 6px 14px -6px oklch(15% 0.04 160 / 0.6); cursor: grab; touch-action: none; }
+#cards .card-handle { position: absolute; top: var(--space-xs); right: var(--space-xs); z-index: 2; display: grid; place-items: center; width: 44px; height: 44px; min-height: 0; padding: 0; border: 0; border-radius: 50%; background: var(--color-card); color: var(--color-card-ink); box-shadow: var(--shadow-raised); cursor: grab; touch-action: none; }
 #cards .card-handle:focus-visible { outline: 3px solid var(--color-focus); outline-offset: 2px; }
 .card-slot.dragging { z-index: 5; }
-.card-slot.dragging .card { box-shadow: 0 24px 40px -18px oklch(10% 0.04 160 / 0.75); }
+.card-slot.dragging .card { box-shadow: var(--shadow-lifted); }
 .card-slot.dragging .card-handle { cursor: grabbing; }
 body.dragging-cards { -webkit-user-select: none; user-select: none; cursor: grabbing; }
 /* In list rows and the one-column phone layout the handle sits at the right edge, clear of the text. */
@@ -493,14 +497,14 @@ body.dragging-cards { -webkit-user-select: none; user-select: none; cursor: grab
 .sectionhead { position: sticky; top: 0; z-index: var(--z-sticky); padding-block: var(--space-sm); margin-bottom: var(--space-sm); }
 .sectionhead::before, .sectionhead .actions::before { content: ""; position: absolute; inset: 0 -100vmax; z-index: -1; background: var(--color-paper); transition: box-shadow var(--dur-short) var(--ease-out); }
 .sectionhead .actions::before { content: none; }
-.collection.is-stuck .sectionhead::before { box-shadow: 0 12px 20px -16px oklch(12% 0.05 160 / 0.9); }
+.collection.is-stuck .sectionhead::before { box-shadow: var(--shadow-bar); }
 @media (max-width: 760px) {
   .sectionhead { display: contents; }
   .sectionhead::before { content: none; }
   .sectionhead > div:first-child { margin-bottom: var(--space-sm); }
   .sectionhead .actions { position: sticky; top: 0; z-index: var(--z-sticky); margin-bottom: var(--space-sm); padding-block: var(--space-xs); }
   .sectionhead .actions::before { content: ""; }
-  .collection.is-stuck .sectionhead .actions::before { box-shadow: 0 12px 20px -16px oklch(12% 0.05 160 / 0.9); }
+  .collection.is-stuck .sectionhead .actions::before { box-shadow: var(--shadow-bar); }
 }
 
 /* Card: an article whose heading button stretches over the whole card. The ring is drawn on the card. */
