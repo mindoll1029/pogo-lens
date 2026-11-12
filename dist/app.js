@@ -400,9 +400,17 @@ async function addFrame(source,time=0,stableFrame,scene,alternates){
   if(duplicate){scene.last={detected,card:duplicate};return false}
  }
  if(stableFrame)canvas.getContext('2d').putImageData(pixels,0,0);
- const image=canvas.toDataURL('image/jpeg',.84);
  const iv=detected.candidate?detected.iv:null;
  const trainer=Number($('#trainer').value);
+ // B: in a video, the same bars with nothing else seen in between are the same Pokémon still on screen.
+ const continuing=scene?.last&&sameAppraisal(scene.last.detected,detected)?scene.last.card:null;
+ if(continuing?.confirmed&&continuing.observed?.cp){
+  // Already verified. A quick look at the CP still tells apart a next Pokémon with identical IVs.
+  const species=db.pokemon.find(p=>p.id===continuing.species);
+  const glance=species&&await recognizeFrame(canvas,db,iv,trainer,{species,cpOnly:true,glance:true}).catch(()=>null);
+  if(!glance?.observed?.cp||glance.observed.cp===continuing.observed.cp){scene.last={detected,card:continuing};return false}
+ }
+ const image=canvas.toDataURL('image/jpeg',.84);
  const card={id:crypto.randomUUID(),createdAt:Date.now(),image,time,iv,confidence:detected.confidence||'조사 화면을 확인하세요.',sig,confirmed:false};
  try{
   const {pokemon,name,observed,verified}=await readCardFromFrames(iv,trainer,detected,alternates);
@@ -423,9 +431,23 @@ async function addFrame(source,time=0,stableFrame,scene,alternates){
  }catch{
   card.confidence='자동 판독을 완료하지 못했습니다. 수정하기에서 확인하세요.';
  }
+ // B: same screen continuing. Unless the name or CP says it is a different Pokémon, keep one card and
+ // let it take whichever reading is better (confirmed > species known > CP known).
+ if(continuing&&!readingsConflict(continuing,card)){
+  const kept=readingScore(card)>readingScore(continuing)?{...card,id:continuing.id,createdAt:continuing.createdAt,time:continuing.time}:continuing;
+  if(kept!==continuing)await save(kept);
+  scene.last={detected,card:kept};
+  return false;
+ }
  await save(card);
  if(scene)scene.last={detected,card};
  return true;
+}
+const readingScore=c=>(c.confirmed?4:0)+(c.species?2:0)+(c.observed?.cp?1:0);
+function readingsConflict(a,b){
+ const family=c=>(db.pokemon.find(p=>p.id===c.species)?.name||c.recognizedName||'').split(' (')[0];
+ const fa=family(a),fb=family(b),ca=a.observed?.cp,cb=b.observed?.cp;
+ return !!(fa&&fb&&fa!==fb)||!!(ca&&cb&&ca!==cb);
 }
 function waitVideo(v,event,action){return new Promise((resolve,reject)=>{const timer=setTimeout(()=>finish(Error('영상을 읽는 시간이 초과되었습니다. MP4 또는 스크린샷으로 다시 시도하세요.')),20000),ok=()=>finish(),bad=()=>finish(Error('이 브라우저가 영상 코덱을 재생하지 못합니다. H.264 MP4 또는 스크린샷을 사용하세요.'));function finish(err){clearTimeout(timer);v.removeEventListener(event,ok);v.removeEventListener('error',bad);err?reject(err):resolve()}v.addEventListener(event,ok,{once:true});v.addEventListener('error',bad,{once:true});action()})}
 // Browsers defer media loading in hidden tabs; wait instead of timing out when the user switches away.

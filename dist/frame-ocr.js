@@ -127,7 +127,8 @@ export async function recognizeFrame(canvas,db,iv,trainer,known={}) {
  if(known.cpOnly&&known.species){
   cropText=await readCropCP();
   const quick=readObservation(db,'',iv,trainer,{...known,cpText:cropText});
-  if(quick.verified)return quick;
+  // A glance (checking whether the same Pokémon is still on screen) never pays for the full OCR.
+  if(quick.verified||known.glance)return quick;
  }
  let text=await read(overview);
  let result=readObservation(db,text,iv,trainer,known);
