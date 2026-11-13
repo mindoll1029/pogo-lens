@@ -486,13 +486,19 @@ body.dragging-cards { -webkit-user-select: none; user-select: none; cursor: grab
 .action-row { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-xs); }
 .sectionhead .actions { flex-direction: column; align-items: flex-end; gap: var(--space-xs); }
 .sectionhead .action-row { justify-content: flex-end; }
-@media (max-width: 760px) {
+@media (max-width: 760px), (max-height: 520px) {
   .sectionhead .actions { align-items: flex-start; gap: 6px; }
   .sectionhead .action-row { justify-content: flex-start; }
 }
-/* On phones the view modes show as icons (their names stay for screen readers). */
+/* Short screens (a phone held sideways, a squat window): height is the scarce side, so both groups share one
+   line and wrap only when the selection buttons need the room. */
+@media (max-height: 520px) {
+  .sectionhead .actions { flex-direction: row; flex-wrap: wrap; align-items: center; }
+}
+/* On phones and short screens the view modes show as icons (their names stay for screen readers), which keeps
+   a sideways phone's selection buttons on the same single line. */
 .view-icon { display: none; width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-@media (max-width: 540px) {
+@media (max-width: 540px), (max-height: 520px) {
   .sectionhead .action-row { gap: 6px; }
   .sort-control svg { left: 11px; }
   .sort-control::after { right: 12px; }
@@ -505,13 +511,14 @@ body.dragging-cards { -webkit-user-select: none; user-select: none; cursor: grab
 }
 
 /* Collection controls follow the scroll. Desktop: the one-row title bar sticks.
-   Phone: the title row would make the bar too tall, so only the buttons stick.
+   Phone, and any screen under 520px tall: the title row would make the bar too tall, so only the buttons stick
+   (app.js picks the same element with the same query).
    The ::before layer paints the bar background edge to edge (html/body clip the overflow). */
 .sectionhead { position: sticky; top: 0; z-index: var(--z-sticky); padding-block: var(--space-sm); margin-bottom: var(--space-sm); }
 .sectionhead::before, .sectionhead .actions::before { content: ""; position: absolute; inset: 0 -100vmax; z-index: -1; background: var(--color-paper); transition: box-shadow var(--dur-short) var(--ease-out); }
 .sectionhead .actions::before { content: none; }
 .collection.is-stuck .sectionhead::before { box-shadow: var(--shadow-bar); }
-@media (max-width: 760px) {
+@media (max-width: 760px), (max-height: 520px) {
   .sectionhead { display: contents; }
   .sectionhead::before { content: none; }
   .sectionhead > div:first-child { margin-bottom: var(--space-sm); }

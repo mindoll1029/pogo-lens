@@ -850,11 +850,13 @@ async function refreshThumbnails(){
 }
 void refreshCardPreviews().then(refreshThumbnails);
 
+// Phones and short screens stick only the button row (style.css uses the same query).
+const compactToolbar='(max-width: 760px), (max-height: 520px)';
 // Shadow under the collection controls only while they are stuck to the top of the screen.
 let stuckFrame=0;
 function updateCollectionStuck(){
  stuckFrame=0;
- const section=$('.collection'),bar=matchMedia('(max-width: 760px)').matches?$('.sectionhead .actions'):$('.sectionhead');
+ const section=$('.collection'),bar=matchMedia(compactToolbar).matches?$('.sectionhead .actions'):$('.sectionhead');
  section.classList.toggle('is-stuck',bar.getBoundingClientRect().top<=0.5&&section.getBoundingClientRect().bottom>bar.offsetHeight+1);
 }
 addEventListener('scroll',()=>{if(!stuckFrame)stuckFrame=requestAnimationFrame(updateCollectionStuck)},{passive:true});
@@ -864,7 +866,7 @@ addEventListener('resize',updateCollectionStuck);
 // (it changes with the layout, selection mode and text size: style.css reads --sticky-offset), and a card that takes
 // keyboard focus is scrolled fully into view rather than only its name.
 function updateStickyOffset(){
- const bar=matchMedia('(max-width: 760px)').matches?$('.sectionhead .actions'):$('.sectionhead');
+ const bar=matchMedia(compactToolbar).matches?$('.sectionhead .actions'):$('.sectionhead');
  document.documentElement.style.setProperty('--sticky-offset',Math.ceil(bar.getBoundingClientRect().height)+'px');
 }
 const stickyResize=new ResizeObserver(updateStickyOffset);
