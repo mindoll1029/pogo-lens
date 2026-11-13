@@ -38,6 +38,8 @@
 html, body { overflow-x: clip; }
 /* Anchor jumps and keyboard focus stop below the sticky card toolbar; app.js keeps --sticky-offset at its height. */
 html { scroll-padding-top: calc(var(--sticky-offset, 96px) + var(--space-sm)); }
+/* Middle-dot compounds in the copy (공격·방어·HP) stay on one line, so no line starts with the dot. */
+.nowrap { white-space: nowrap; }
 /* Korean wraps between words (어절), not mid-word; a word longer than its line still breaks. */
 body { font-synthesis: none; font-weight: 500; word-break: keep-all; overflow-wrap: break-word; }
 button, input, select, textarea { font: inherit; }

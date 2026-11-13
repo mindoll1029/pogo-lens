@@ -52,6 +52,8 @@ let selectingCards=false;
 function syncCollection(){
  $('#count').textContent=cards.length;
  $('#empty').hidden=cards.length>0;
+ // With no cards there is nothing to select or reorder: the whole second toolbar row steps aside.
+ $('#select-cards').closest('.action-row').hidden=!cards.length;
  $('#select-cards').disabled=!cards.length||busy;
  $('#select-cards').textContent=selectingCards?'선택 취소':'카드 선택';
  $('#delete-selected').hidden=!selectingCards;
