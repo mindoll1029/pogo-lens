@@ -495,6 +495,12 @@ body.dragging-cards { -webkit-user-select: none; user-select: none; cursor: grab
 @media (max-height: 520px) {
   .sectionhead .actions { flex-direction: row; flex-wrap: wrap; align-items: center; }
 }
+/* The narrowest phones (or any phone with large browser text) can't fit the three selection buttons on one line;
+   while selecting, the sort and view row steps aside so the bar stays two lines instead of three.
+   In rem so a larger browser text size moves the threshold with it. */
+@media (max-width: 22.4375rem) {
+  .collection.selecting .sectionhead .action-row:first-child { display: none; }
+}
 /* On phones and short screens the view modes show as icons (their names stay for screen readers), which keeps
    a sideways phone's selection buttons on the same single line. */
 .view-icon { display: none; width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
