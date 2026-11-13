@@ -864,24 +864,17 @@ function updateCollectionStuck(){
 addEventListener('scroll',()=>{if(!stuckFrame)stuckFrame=requestAnimationFrame(updateCollectionStuck)},{passive:true});
 addEventListener('resize',updateCollectionStuck);
 
-// Keyboard focus must not land under the sticky toolbar. The page's scroll padding follows the bar's real height
-// (it changes with the layout, selection mode and text size: style.css reads --sticky-offset), and a card that takes
-// keyboard focus is scrolled fully into view rather than only its name.
-function updateStickyOffset(){
- const bar=matchMedia(compactToolbar).matches?$('.sectionhead .actions'):$('.sectionhead');
- document.documentElement.style.setProperty('--sticky-offset',Math.ceil(bar.getBoundingClientRect().height)+'px');
-}
-const stickyResize=new ResizeObserver(updateStickyOffset);
-stickyResize.observe($('.sectionhead'));stickyResize.observe($('.sectionhead .actions'));
-addEventListener('resize',updateStickyOffset);
-updateStickyOffset();
+// Keyboard focus must not land under the sticky toolbar. The browser's own focus scroll only brings the small name
+// button into view and does not know about the bar, so once a card takes keyboard focus it is scrolled to sit fully
+// between the bar and the bottom of the screen. The bar is measured only then: watching its size continuously cost
+// a full-page layout on every start-up with a large collection.
 $('#cards').addEventListener('focusin',e=>{
  const button=e.target.closest?.('.card-open');
  if(!button||!button.matches(':focus-visible'))return;
- // After the browser's own focus scroll, which only brings the small name button into view.
  requestAnimationFrame(()=>{
-  const card=button.closest('.card'),r=card.getBoundingClientRect();
-  const top=parseFloat(getComputedStyle(document.documentElement).scrollPaddingTop)||0;
-  if(r.top<top||r.bottom>innerHeight)card.scrollIntoView({block:'nearest',behavior:scrollMotion()});
+  const bar=matchMedia(compactToolbar).matches?$('.sectionhead .actions'):$('.sectionhead');
+  const card=button.closest('.card'),r=card.getBoundingClientRect(),top=bar.getBoundingClientRect().bottom+12;
+  const delta=r.top<top?r.top-top:r.bottom>innerHeight-12?Math.min(r.bottom-innerHeight+12,r.top-top):0;
+  if(delta)scrollBy({top:delta,behavior:scrollMotion()});
  });
 });
