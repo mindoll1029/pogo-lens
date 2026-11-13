@@ -36,6 +36,8 @@
   --type-dark: oklch(49.9% 0.025 288.3); --type-steel: oklch(55.0% 0.062 217.5); --type-fairy: oklch(57.0% 0.118 333.0);
 }
 html, body { overflow-x: clip; }
+/* Anchor jumps and keyboard focus stop below the sticky card toolbar; app.js keeps --sticky-offset at its height. */
+html { scroll-padding-top: calc(var(--sticky-offset, 96px) + var(--space-sm)); }
 /* Korean wraps between words (어절), not mid-word; a word longer than its line still breaks. */
 body { font-synthesis: none; font-weight: 500; word-break: keep-all; overflow-wrap: break-word; }
 button, input, select, textarea { font: inherit; }

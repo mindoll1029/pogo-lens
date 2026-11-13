@@ -27,11 +27,20 @@ try{$('#trainer').value=Number(localStorage.getItem('go-lens-trainer'))||''}catc
 function status(s){const field=$('#status');field.textContent=s;field.hidden=!s}
 $('.textlink').onclick=()=>{$('#guide').open=true};
 async function transaction(mode,fn){if(!storage)throw Error('기기 저장소를 사용할 수 없습니다.');return new Promise((resolve,reject)=>{const t=storage.transaction('cards',mode),req=fn(t.objectStore('cards'));let value;req.onsuccess=()=>value=req.result;t.oncomplete=()=>resolve(value);t.onerror=()=>reject(t.error);t.onabort=()=>reject(t.error)})}
+// Cards live only in this browser. Once there is something to lose, ask the browser to keep the storage when it
+// clears space (best-effort storage can be evicted); browsers that decline or lack the API simply keep the default.
+let persistenceAsked=false;
+function askPersistence(){
+ if(persistenceAsked||!navigator.storage?.persist)return;
+ persistenceAsked=true;
+ navigator.storage.persisted().then(kept=>kept||navigator.storage.persist()).catch(()=>{});
+}
 async function save(card){
  try{await transaction('readwrite',s=>s.put(card));}
  catch(error){throw Error('카드를 기기에 저장하지 못했습니다. 저장 공간을 확인한 뒤 다시 시도하세요.',{cause:error});}
  const i=cards.findIndex(x=>x.id===card.id);
- if(i<0)cards.push(card);else cards[i]=card;
+ // Asked when a new card arrives, never for background updates of existing ones (Firefox shows a prompt).
+ if(i<0){cards.push(card);askPersistence()}else cards[i]=card;
  const item=renderCard(card),current=cardNodes.get(card.id);
  if(current)current.replaceChildren(...item.childNodes);
  else{cardNodes.set(card.id,item);$('#cards').append(item)}
@@ -273,7 +282,7 @@ try{cards=await transaction('readonly',s=>s.getAll());render()}catch{setInlineSt
 const worker=new Worker('worker.js',{type:'module'}),pending=new Map();worker.onmessage=({data})=>{const p=pending.get(data.id);if(p){pending.delete(data.id);clearTimeout(p.timer);data.error?p.reject(Error(data.error)):p.resolve(data.result)}};worker.onerror=()=>{for(const p of pending.values()){clearTimeout(p.timer);p.reject(Error('분석 작업을 실행하지 못했습니다. 페이지를 새로 열어 주세요.'))}pending.clear()};
 function calculate(data){return new Promise((resolve,reject)=>{const id=++job,timer=setTimeout(()=>{pending.delete(id);reject(Error('계산 시간이 초과되었습니다. 다시 시도해 주세요.'))},60000);pending.set(id,{resolve,reject,timer});worker.postMessage(id===1?{id,db,...data}:{id,...data})})}
 function options(select,items,placeholder){select.replaceChildren();if(placeholder){const o=el('option',null,placeholder);o.value='';select.append(o)}for(const [value,label] of items){const o=el('option',null,label);o.value=value;select.append(o)}}
-function speciesOptions(query='',value=''){const list=db.pokemon.filter(p=>`${p.name} ${p.englishName||''} ${p.id} ${p.dex}`.toLowerCase().includes(query.toLowerCase()));options($('#species'),list.map(p=>[p.id,`${p.name} / #${p.dex}`]),'종·폼을 직접 선택하세요');if(list.some(p=>p.id===value))$('#species').value=value;}
+function speciesOptions(query='',value=''){const list=db.pokemon.filter(p=>`${p.name} ${p.englishName||''} ${p.id} ${p.dex}`.toLowerCase().includes(query.trim().toLowerCase()));options($('#species'),list.map(p=>[p.id,`${p.name} / #${p.dex}`]),'종·폼을 직접 선택하세요');if(list.some(p=>p.id===value))$('#species').value=value;else if(list.length===1)$('#species').value=list[0].id;const q=query.trim();$('#species-count').textContent=!q?'':list.length?'검색 결과 '+list.length+'개':'‘'+q+'’에 맞는 포켓몬이 없습니다. 한글 이름이나 도감 번호로 찾아보세요.';$('#species-apply').disabled=!$('#species').value;}
 function getState(){return {shadow:$('#state-shadow').checked,purified:$('#state-purified').checked,lucky:$('#state-lucky').checked}}
 function moveOptions(p,fast='',charged='',charged2=''){const allowed=!!p?.shadowAllowed&&!p?.mega;for(const k of ['shadow','purified']){$('#state-'+k).disabled=!allowed;if(!allowed)$('#state-'+k).checked=false}let moves={fast:[],charged:[]};if(p)moves=legalMoves(db,p,getState());const label=k=>`${db.moves[k]?.name||'이름 확인 필요'}${p?.elite?.includes(k)?' / 한정/레거시':''}`;options($('#fast'),moves.fast.map(k=>[k,label(k)]),'실제 보유 기술 선택');options($('#charged'),moves.charged.map(k=>[k,label(k)]),'실제 보유 기술 선택');if(moves.fast.includes(fast))$('#fast').value=fast;options($('#charged2'),moves.charged.map(k=>[k,label(k)]),'선택 안 함');if(moves.charged.includes(charged))$('#charged').value=charged;if(moves.charged.includes(charged2)&&charged2!==charged)$('#charged2').value=charged2;updateMoveTypes();}
 
@@ -850,3 +859,25 @@ function updateCollectionStuck(){
 }
 addEventListener('scroll',()=>{if(!stuckFrame)stuckFrame=requestAnimationFrame(updateCollectionStuck)},{passive:true});
 addEventListener('resize',updateCollectionStuck);
+
+// Keyboard focus must not land under the sticky toolbar. The page's scroll padding follows the bar's real height
+// (it changes with the layout, selection mode and text size: style.css reads --sticky-offset), and a card that takes
+// keyboard focus is scrolled fully into view rather than only its name.
+function updateStickyOffset(){
+ const bar=matchMedia('(max-width: 760px)').matches?$('.sectionhead .actions'):$('.sectionhead');
+ document.documentElement.style.setProperty('--sticky-offset',Math.ceil(bar.getBoundingClientRect().height)+'px');
+}
+const stickyResize=new ResizeObserver(updateStickyOffset);
+stickyResize.observe($('.sectionhead'));stickyResize.observe($('.sectionhead .actions'));
+addEventListener('resize',updateStickyOffset);
+updateStickyOffset();
+$('#cards').addEventListener('focusin',e=>{
+ const button=e.target.closest?.('.card-open');
+ if(!button||!button.matches(':focus-visible'))return;
+ // After the browser's own focus scroll, which only brings the small name button into view.
+ requestAnimationFrame(()=>{
+  const card=button.closest('.card'),r=card.getBoundingClientRect();
+  const top=parseFloat(getComputedStyle(document.documentElement).scrollPaddingTop)||0;
+  if(r.top<top||r.bottom>innerHeight)card.scrollIntoView({block:'nearest',behavior:scrollMotion()});
+ });
+});
